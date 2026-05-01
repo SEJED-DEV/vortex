@@ -3,6 +3,7 @@ import path from 'path';
 
 export interface Session {
     history: string[];
+    lastActivity: number;
 }
 
 export class SessionManager {
@@ -14,9 +15,7 @@ export class SessionManager {
             try {
                 const data = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8'));
                 this.sessions = new Map(Object.entries(data));
-            } catch (e) {
-                // Silently fail if file is corrupt or empty
-            }
+            } catch (e) {}
         }
     }
 
@@ -31,13 +30,14 @@ export class SessionManager {
 
     static get(userId: string): Session {
         if (!this.sessions.has(userId)) {
-            this.sessions.set(userId, { history: [] });
+            this.sessions.set(userId, { history: [], lastActivity: 0 });
             this.save();
         }
         return this.sessions.get(userId)!;
     }
 
     static set(userId: string, session: Session) {
+        session.lastActivity = Date.now();
         this.sessions.set(userId, session);
         this.save();
     }
@@ -48,5 +48,4 @@ export class SessionManager {
     }
 }
 
-// Load on import
 SessionManager.load();

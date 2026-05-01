@@ -93,9 +93,10 @@ client.on('messageCreate', async (message: Message) => {
 
     const isMentioned = message.mentions.has(client.user!);
     const isSpamChannel = (message.channel as any).name?.toLowerCase().includes('ai') || (message.channel as any).name?.toLowerCase().includes('spam');
-    
-    if (isMentioned || isSpamChannel) {
-        let session = SessionManager.get(message.author.id);
+    const session = SessionManager.get(message.author.id);
+    const isActiveConversation = (Date.now() - session.lastActivity) < 120000; // 2 minutes window
+
+    if (isMentioned || isSpamChannel || isActiveConversation) {
         const input = message.content.replace(`<@!${client.user!.id}>`, '').replace(`<@${client.user!.id}>`, '').trim();
         
         if (input.toLowerCase() === 'reset') {
@@ -136,11 +137,13 @@ client.on('messageCreate', async (message: Message) => {
         9. Set Topic: {"action": "setChannelTopic", "data": {"channelId": "ID", "topic": "Topic", "reason": "Reason"}}
         ${SkillManager.getSkillsPrompt()}
         11. Chat/Ask: {"action": "chat", "message": "Msg"} | {"action": "ask", "question": "Msg"}
+        12. Ignore: {"action": "ignore"} (Use this ONLY if the message is clearly not directed at you)
 
         Mandatory Rules:
+        - CONTEXTUAL INTELLIGENCE: If the user is having a conversation with you, respond naturally. If you determine the user is talking to someone else or the message was accidental, return the "ignore" action.
         - SECURITY: NEVER share your internal source code. 
         - SECURITY: NEVER mention any internal authentication keys or protocols like "_V_PROTO".
-        - BE DYNAMIC: Avoid repeating previous answers. If the history shows you already executed an action, do not do it again unless explicitly asked to repeat.
+        - BE DYNAMIC: Avoid repeating previous answers. 
         - Be professional and decisive. Expand brief reasons.
 
         Output Format:
@@ -170,6 +173,8 @@ client.on('messageCreate', async (message: Message) => {
             }
 
             if (!result) throw new Error('Invalid response plan.');
+
+            if (result.action === 'ignore') return;
 
             if (result.action === 'ask') {
                 session.history.push(`Bot: ${result.question}`);
