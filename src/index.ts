@@ -114,18 +114,22 @@ client.on('messageCreate', async (message: Message) => {
         Current State: ${session.history.length > 0 ? "In conversation" : "Idle"}
         
         Mandatory Rules:
-        1. DO NOT repeat completed actions. Check history: if an action (e.g. build, sendMessage) was already executed successfully, DO NOT do it again unless explicitly asked to repeat.
-        2. BE DYNAMIC. If you just finished a task, ask what's next or provide a status update.
+        1. DO NOT repeat completed actions. 
+        2. BE DYNAMIC. If a task is finished, ask what's next.
         3. IGNORE accidental messages using {"action": "ignore"}.
         4. SECURITY: No code sharing or credential mentions.
 
-        History (Last 10 turns):
+        History:
         ${session.history.join('\n')}
 
         Capabilities:
         - kick, ban, purge, slowmode, createRole, deleteRole, setNickname, sendMessage, setChannelTopic
+        - createChannel: {"action": "createChannel", "data": {"name": "Name", "type": "text|voice", "reason": "Reason"}}
+        - deleteChannel: {"action": "deleteChannel", "data": {"channelName": "Name", "reason": "Reason"}}
         ${SkillManager.getSkillsPrompt()}
         - chat, ask, ignore
+
+        Note: For channel actions, you can use "channelName" or "channelId".
 
         Output ONLY JSON.`;
 
@@ -169,7 +173,7 @@ client.on('messageCreate', async (message: Message) => {
                 session.history.push(`Bot Result: Task ${result.action} completed.`);
                 SessionManager.set(message.author.id, session);
                 await message.reply(`${skillRes}`);
-            } else if (['kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'sendMessage', 'setChannelTopic'].includes(result.action)) {
+            } else if (['kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'sendMessage', 'setChannelTopic', 'createChannel', 'deleteChannel'].includes(result.action)) {
                 logSystem(`Mod: ${result.action}`);
                 const modRes = await ManagementManager.execute(message, result.action, result.data);
                 session.history.push(`Bot Result: Action ${result.action} success.`);

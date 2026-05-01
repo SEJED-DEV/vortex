@@ -1,4 +1,4 @@
-import { Guild, TextChannel, Message, EmbedBuilder } from 'discord.js';
+import { Guild, TextChannel, Message, EmbedBuilder, ChannelType } from 'discord.js';
 
 export class ManagementManager {
     private static LOG_CHANNEL_NAME = 'ai-actions-logs';
@@ -15,7 +15,7 @@ export class ManagementManager {
                         deny: ['ViewChannel']
                     }
                 ]
-            });
+            }) as TextChannel;
         }
         return channel;
     }
@@ -32,6 +32,10 @@ export class ManagementManager {
             )
             .setTimestamp();
         await logChannel.send({ embeds: [embed] });
+    }
+
+    private static findChannel(guild: Guild, query: string) {
+        return guild.channels.cache.get(query) || guild.channels.cache.find(c => c.name === query || c.name === query.replace('#', ''));
     }
 
     static async execute(message: Message, action: string, data: any): Promise<string> {
@@ -87,18 +91,35 @@ export class ManagementManager {
                 return `Successfully changed **${member.user.tag}** nickname to **${data.nickname}** for: *${reason}*`;
             }
             case 'sendMessage': {
-                const channel = guild.channels.cache.get(data.channelId) as TextChannel;
-                if (!channel || !channel.isTextBased()) return `Failed to send message: Channel ${data.channelId} not found or not text-based.`;
+                const channel = this.findChannel(guild, data.channelId || data.channelName) as TextChannel;
+                if (!channel || !channel.isTextBased()) return `Failed to send message: Channel ${data.channelId || data.channelName} not found.`;
                 await channel.send(data.content);
                 await this.logAction(guild, 'SEND_MESSAGE', `Message sent to #${channel.name}`, reason, message.author.tag);
                 return `Successfully sent message to **#${channel.name}** for: *${reason}*`;
             }
             case 'setChannelTopic': {
-                const channel = guild.channels.cache.get(data.channelId || message.channelId) as TextChannel;
+                const channel = this.findChannel(guild, data.channelId || data.channelName || message.channelId) as TextChannel;
                 if (!channel || !channel.setTopic) return `Failed to set topic: Invalid channel.`;
                 await channel.setTopic(data.topic, reason);
                 await this.logAction(guild, 'SET_TOPIC', `Topic updated in #${channel.name}`, reason, message.author.tag);
                 return `Successfully updated topic in **#${channel.name}** for: *${reason}*`;
+            }
+            case 'createChannel': {
+                const channel = await guild.channels.create({
+                    name: data.name,
+                    type: data.type === 'voice' ? ChannelType.GuildVoice : ChannelType.GuildText,
+                    reason
+                });
+                await this.logAction(guild, 'CREATE_CHANNEL', channel.name, reason, message.author.tag);
+                return `Successfully created channel **#${channel.name}** for: *${reason}*`;
+            }
+            case 'deleteChannel': {
+                const channel = this.findChannel(guild, data.channelId || data.channelName);
+                if (!channel) return `Failed to delete channel: ${data.channelId || data.channelName} not found.`;
+                const name = channel.name;
+                await channel.delete(reason);
+                await this.logAction(guild, 'DELETE_CHANNEL', name, reason, message.author.tag);
+                return `Successfully deleted channel **#${name}** for: *${reason}*`;
             }
             default:
                 return `AI attempted unknown action: ${action}`;
