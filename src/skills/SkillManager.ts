@@ -7,10 +7,12 @@ export class SkillManager {
     private static skills: Map<string, Skill> = new Map();
 
     static async loadSkills() {
-        const skillsDir = path.join(__dirname, '../../src/skills');
-        if (!fs.existsSync(skillsDir)) return;
-
-        const files = fs.readdirSync(skillsDir).filter(f => (f.endsWith('.ts') || f.endsWith('.js')) && f !== 'Skill.ts' && f !== 'SkillManager.ts');
+        const skillsDir = __dirname;
+        const files = fs.readdirSync(skillsDir).filter(f => 
+            (f.endsWith('.js') || (f.endsWith('.ts') && !f.endsWith('.d.ts'))) && 
+            f !== 'Skill.js' && f !== 'Skill.ts' && 
+            f !== 'SkillManager.js' && f !== 'SkillManager.ts'
+        );
         
         for (const file of files) {
             try {
@@ -19,9 +21,7 @@ export class SkillManager {
                 if (skill && skill.actionId) {
                     this.skills.set(skill.actionId, skill);
                 }
-            } catch (e) {
-                console.error(`Failed to load skill ${file}:`, e);
-            }
+            } catch (e) {}
         }
     }
 
