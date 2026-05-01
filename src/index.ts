@@ -42,7 +42,7 @@ async function runScheduledIntegrityCheck() {
             const channel = guild.channels.cache.find(c => c.name === 'ai-actions-logs' && c.isTextBased()) as TextChannel;
             if (channel) {
                 const prompt = `System Alert: External code modifications detected. Status: ${status}
-                Please provide a concise summary for the admins.`;
+                Summarize for admins.`;
                 try {
                     const aiRes = await provider.getResponse(prompt);
                     if (aiRes.text) {
@@ -102,7 +102,7 @@ client.on('messageCreate', async (message: Message) => {
         
         if (input.toLowerCase() === 'reset') {
             SessionManager.delete(message.author.id);
-            return message.reply('Memory cleared. System reset to idle state.');
+            return message.reply('Memory cleared.');
         }
 
         session.history.push(`User: ${input}`);
@@ -111,18 +111,14 @@ client.on('messageCreate', async (message: Message) => {
 
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
 
-        const prompt = `You are the Vortex Manager, an omnipotent, self-evolving AI entity.
-        Project Language: TypeScript (TS)
-        
-        SELF-EVOLUTION PROTOCOL:
-        - All source code is TypeScript. 
-        - All new skills MUST be created as .ts files in "src/skills/" following the established Skill interface.
-        - DO NOT create .py or other non-TS files.
+        const prompt = `You are the Vortex Manager. 
+        Language: TypeScript.
 
         Mandatory Rules:
-        1. DO NOT repeat completed actions. 
-        2. BE DYNAMIC and proactive.
-        3. IGNORE accidental messages using {"action": "ignore"}.
+        1. Respond with a valid JSON action.
+        2. Simple chat: {"action": "chat", "message": "Text"}
+        3. Only use "evolve" if the user explicitly asks for a NEW capability or if a bug MUST be fixed. Do not evolve on every message.
+        4. No repeating.
 
         History:
         ${session.history.join('\n')}
@@ -132,52 +128,47 @@ client.on('messageCreate', async (message: Message) => {
         ${SkillManager.getSkillsPrompt()}
         - chat, ask, ignore
 
-        Output ONLY JSON.`;
+        Output ONLY valid JSON.`;
 
         try {
             const aiRes: AIResponse = await provider.getResponse(prompt);
-            if (!aiRes.text) throw new Error('AI empty response.');
+            if (!aiRes.text) throw new Error('Empty AI response.');
             
             let result: any = null;
-            const startIdx = aiRes.text.indexOf('{');
-            const endIdx = aiRes.text.lastIndexOf('}');
-            if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-                try { result = JSON.parse(aiRes.text.substring(startIdx, endIdx + 1)); } catch (e) {}
+            const jsonMatch = aiRes.text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                try { result = JSON.parse(jsonMatch[0]); } catch (e) {}
             }
 
             if (!result || !result.action) {
-                const jsonBlocks = aiRes.text.match(/\{[\s\S]*?\}/g);
-                if (jsonBlocks) {
-                    for (const block of jsonBlocks) {
-                        try {
-                            const parsed = JSON.parse(block);
-                            if (parsed.action) { result = parsed; break; }
-                        } catch (e) { continue; }
-                    }
+                // Last ditch effort for chat
+                if (aiRes.text.length > 1 && !aiRes.text.includes('{')) {
+                    result = { action: 'chat', message: aiRes.text };
+                } else {
+                    throw new Error('Invalid plan format.');
                 }
             }
 
-            if (!result) throw new Error('Invalid plan.');
             if (result.action === 'ignore') return;
 
             if (result.action === 'ask') {
-                session.history.push(`Bot Asked: ${result.question}`);
+                session.history.push(`Bot: ${result.question}`);
                 SessionManager.set(message.author.id, session);
                 await message.reply(`${result.question}`);
             } else if (result.action === 'chat') {
-                session.history.push(`Bot Chat: ${result.message}`);
+                session.history.push(`Bot: ${result.message}`);
                 SessionManager.set(message.author.id, session);
                 await message.reply(`${result.message}`);
             } else if (SkillManager.hasSkill(result.action)) {
                 logSystem(`Skill: ${result.action}`);
                 const skillRes = await SkillManager.execute(result.action, message, result.data);
-                session.history.push(`Bot Result: Task ${result.action} completed.`);
+                session.history.push(`Bot: Task ${result.action} done.`);
                 SessionManager.set(message.author.id, session);
                 await message.reply(`${skillRes}`);
             } else if (['kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'sendMessage', 'setChannelTopic', 'createChannel', 'deleteChannel'].includes(result.action)) {
                 logSystem(`Mod: ${result.action}`);
                 const modRes = await ManagementManager.execute(message, result.action, result.data);
-                session.history.push(`Bot Result: Action ${result.action} success.`);
+                session.history.push(`Bot: Action ${result.action} success.`);
                 SessionManager.set(message.author.id, session);
                 try {
                     if (result.action === 'purge') {
