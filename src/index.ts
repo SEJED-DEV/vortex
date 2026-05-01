@@ -107,27 +107,29 @@ client.on('messageCreate', async (message: Message) => {
             return message.reply('Memory cleared.');
         }
 
-        session.history.push(`User: ${input}`);
+        const isStaff = message.member?.permissions.has(PermissionsBitField.Flags.Administrator) || 
+                        message.member?.roles.cache.some(r => ['staff', 'moderator', 'support', 'admin'].includes(r.name.toLowerCase()));
+
+        session.history.push(`User: ${input} (IsStaff: ${isStaff})`);
         if (session.history.length > 10) session.history.shift();
         SessionManager.set(message.author.id, session);
 
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
 
         const prompt = `You are the Vortex Manager. 
-        Organization: Cortex HQ
-        Owner: sejed.dev
-        Language: TypeScript.
+        User Status: ${isStaff ? "Staff/Admin (Authorized)" : "Regular User (Unauthorized for Moderation)"}
 
         RULES:
-        - Response MUST be a JSON object.
-        - Format: {"action": "chat|ask|kick|...", "message|question|data": "..."}
+        - MODERATION ACTIONS (kick, ban, warn, purge, etc.) MUST ONLY be executed if User Status is "Staff/Admin".
+        - If a Regular User asks for moderation, politely refuse.
+        - Format: {"action": "chat|ask|kick|warn|...", "message|question|data": "..."}
         - Only use "evolve" if requested.
 
         History:
         ${session.history.join('\n')}
 
         Capabilities:
-        - Mod: kick, ban, purge, slowmode, createRole, deleteRole, setNickname, sendMessage, setChannelTopic, createChannel, deleteChannel
+        - Mod: warn, kick, ban, purge, slowmode, createRole, deleteRole, setNickname, sendMessage, setChannelTopic, createChannel, deleteChannel
         - Skills: ${SkillManager.getSkillsPrompt()}
         - Chat: chat, ask, ignore
 
@@ -163,6 +165,12 @@ client.on('messageCreate', async (message: Message) => {
             if (!result || !result.action) throw new Error('Could not parse plan.');
             if (result.action === 'ignore') return;
 
+            // Permission Guard
+            const modActions = ['warn', 'kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'createChannel', 'deleteChannel', 'evolve'];
+            if (modActions.includes(result.action) && !isStaff) {
+                return message.reply("🚫 **Access Denied**: Only the Staff team or Administrators can authorize moderation actions.");
+            }
+
             if (result.action === 'ask') {
                 session.history.push(`Bot: ${result.question}`);
                 SessionManager.set(message.author.id, session);
@@ -177,7 +185,7 @@ client.on('messageCreate', async (message: Message) => {
                 session.history.push(`Bot: Task ${result.action} done.`);
                 SessionManager.set(message.author.id, session);
                 await message.reply(skillRes);
-            } else if (['kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'sendMessage', 'setChannelTopic', 'createChannel', 'deleteChannel'].includes(result.action)) {
+            } else if (modActions.includes(result.action) || result.action === 'sendMessage' || result.action === 'setChannelTopic') {
                 logSystem(`Mod: ${result.action}`);
                 const modRes = await ManagementManager.execute(message, result.action, result.data);
                 session.history.push(`Bot: Action ${result.action} success.`);

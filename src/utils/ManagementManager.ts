@@ -40,82 +40,89 @@ export class ManagementManager {
 
     static async execute(message: Message, action: string, data: any): Promise<string> {
         const guild = message.guild!;
-        const reason = data.reason || 'No reason provided by AI Architect.';
+        const payload = data || {};
+        const reason = payload.reason || 'No reason provided by AI Manager.';
 
         switch (action) {
+            case 'warn': {
+                const user = await guild.members.fetch(payload.userId).catch(() => null);
+                if (!user) return `Failed to warn: User ${payload.userId} not found.`;
+                await this.logAction(guild, 'WARN', user.user.tag, reason, message.author.tag);
+                return `⚠️ **User Warned**: ${user.toString()} has been officially warned for: *${reason}*`;
+            }
             case 'kick': {
-                const member = await guild.members.fetch(data.userId).catch(() => null);
-                if (!member) return `Failed to kick: User ${data.userId} not found.`;
+                const member = await guild.members.fetch(payload.userId).catch(() => null);
+                if (!member) return `Failed to kick: User ${payload.userId} not found.`;
                 await member.kick(reason);
                 await this.logAction(guild, 'KICK', member.user.tag, reason, message.author.tag);
                 return `Successfully kicked **${member.user.tag}** for: *${reason}*`;
             }
             case 'ban': {
-                const user = await guild.client.users.fetch(data.userId).catch(() => null);
-                if (!user) return `Failed to ban: User ${data.userId} not found.`;
+                const user = await guild.client.users.fetch(payload.userId).catch(() => null);
+                if (!user) return `Failed to ban: User ${payload.userId} not found.`;
                 await guild.members.ban(user, { reason });
                 await this.logAction(guild, 'BAN', user.tag, reason, message.author.tag);
                 return `Successfully banned **${user.tag}** for: *${reason}*`;
             }
             case 'purge': {
-                const amount = parseInt(data.amount);
-                if (isNaN(amount) || amount < 1 || amount > 100) return `Failed to purge: Invalid amount (${data.amount}).`;
+                const amount = parseInt(payload.amount);
+                if (isNaN(amount) || amount < 1 || amount > 100) return `Failed to purge: Invalid amount (${payload.amount}).`;
                 const deleted = await (message.channel as TextChannel).bulkDelete(amount, true);
                 await this.logAction(guild, 'PURGE', `${deleted.size} messages in #${(message.channel as TextChannel).name}`, reason, message.author.tag);
                 return `Successfully purged **${deleted.size}** messages for: *${reason}*`;
             }
             case 'slowmode': {
-                const duration = parseInt(data.duration);
+                const duration = parseInt(payload.duration);
                 if (isNaN(duration)) return `Failed to set slowmode: Invalid duration.`;
                 await (message.channel as TextChannel).setRateLimitPerUser(duration, reason);
                 await this.logAction(guild, 'SLOWMODE', `Set to ${duration}s in #${(message.channel as TextChannel).name}`, reason, message.author.tag);
                 return `Successfully set slowmode to **${duration}s** for: *${reason}*`;
             }
             case 'createRole': {
-                const role = await guild.roles.create({ name: data.name, color: data.color, reason });
+                const role = await guild.roles.create({ name: payload.name, color: payload.color, reason });
                 await this.logAction(guild, 'CREATE_ROLE', role.name, reason, message.author.tag);
                 return `Successfully created role **${role.name}** for: *${reason}*`;
             }
             case 'deleteRole': {
-                const role = guild.roles.cache.get(data.roleId);
-                if (!role) return `Failed to delete role: ID ${data.roleId} not found.`;
+                const role = guild.roles.cache.get(payload.roleId);
+                if (!role) return `Failed to delete role: ID ${payload.roleId} not found.`;
                 await role.delete(reason);
                 await this.logAction(guild, 'DELETE_ROLE', role.name, reason, message.author.tag);
                 return `Successfully deleted role **${role.name}** for: *${reason}*`;
             }
             case 'setNickname': {
-                const member = await guild.members.fetch(data.userId).catch(() => null);
-                if (!member) return `Failed to set nickname: User ${data.userId} not found.`;
-                await member.setNickname(data.nickname, reason);
-                await this.logAction(guild, 'SET_NICKNAME', `${member.user.tag} -> ${data.nickname}`, reason, message.author.tag);
-                return `Successfully changed **${member.user.tag}** nickname to **${data.nickname}** for: *${reason}*`;
+                const member = await guild.members.fetch(payload.userId).catch(() => null);
+                if (!member) return `Failed to set nickname: User ${payload.userId} not found.`;
+                await member.setNickname(payload.nickname, reason);
+                await this.logAction(guild, 'SET_NICKNAME', `${member.user.tag} -> ${payload.nickname}`, reason, message.author.tag);
+                return `Successfully changed **${member.user.tag}** nickname to **${payload.nickname}** for: *${reason}*`;
             }
             case 'sendMessage': {
-                const channel = this.findChannel(guild, data.channelId || data.channelName) as TextChannel;
-                if (!channel || !channel.isTextBased()) return `Failed to send message: Channel ${data.channelId || data.channelName} not found.`;
-                await channel.send(data.content);
+                const channel = this.findChannel(guild, payload.channelId || payload.channelName) as TextChannel;
+                if (!channel || !channel.isTextBased()) return `Failed to send message: Channel ${payload.channelId || payload.channelName} not found.`;
+                await channel.send(payload.content);
                 await this.logAction(guild, 'SEND_MESSAGE', `Message sent to #${channel.name}`, reason, message.author.tag);
                 return `Successfully sent message to **#${channel.name}** for: *${reason}*`;
             }
             case 'setChannelTopic': {
-                const channel = this.findChannel(guild, data.channelId || data.channelName || message.channelId) as TextChannel;
+                const channel = this.findChannel(guild, payload.channelId || payload.channelName || message.channelId) as TextChannel;
                 if (!channel || !channel.setTopic) return `Failed to set topic: Invalid channel.`;
-                await channel.setTopic(data.topic, reason);
+                await channel.setTopic(payload.topic, reason);
                 await this.logAction(guild, 'SET_TOPIC', `Topic updated in #${channel.name}`, reason, message.author.tag);
                 return `Successfully updated topic in **#${channel.name}** for: *${reason}*`;
             }
             case 'createChannel': {
                 const channel = await guild.channels.create({
-                    name: data.name,
-                    type: data.type === 'voice' ? ChannelType.GuildVoice : ChannelType.GuildText,
+                    name: payload.name,
+                    type: payload.type === 'voice' ? ChannelType.GuildVoice : ChannelType.GuildText,
                     reason
                 });
                 await this.logAction(guild, 'CREATE_CHANNEL', channel.name, reason, message.author.tag);
                 return `Successfully created channel **#${channel.name}** for: *${reason}*`;
             }
             case 'deleteChannel': {
-                const channel = this.findChannel(guild, data.channelId || data.channelName);
-                if (!channel) return `Failed to delete channel: ${data.channelId || data.channelName} not found.`;
+                const channel = this.findChannel(guild, payload.channelId || payload.channelName);
+                if (!channel) return `Failed to delete channel: ${payload.channelId || payload.channelName} not found.`;
                 const name = channel.name;
                 await channel.delete(reason);
                 await this.logAction(guild, 'DELETE_CHANNEL', name, reason, message.author.tag);
