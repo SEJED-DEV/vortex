@@ -3,3 +3,4 @@ dist
 .env
 sessions.json
 package-lock.json
+data/

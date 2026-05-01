@@ -1,4 +1,5 @@
 import { Guild, TextChannel, Message, EmbedBuilder, ChannelType } from 'discord.js';
+import { WarnManager } from './WarnManager';
 
 export class ManagementManager {
     private static LOG_CHANNEL_NAME = 'ai-actions-logs';
@@ -21,52 +22,115 @@ export class ManagementManager {
     }
 
     public static async logAction(guild: Guild, action: string, target: string, reason: string, performer: string) {
-        const logChannel = await this.getLogChannel(guild);
-        const embed = new EmbedBuilder()
-            .setTitle(`AI Action: ${action}`)
-            .setColor('#FF0000')
-            .addFields(
-                { name: 'Target', value: target, inline: true },
-                { name: 'Reason', value: reason, inline: true },
-                { name: 'Performer', value: performer, inline: true }
-            )
-            .setTimestamp();
-        await logChannel.send({ embeds: [embed] });
+        try {
+            const logChannel = await this.getLogChannel(guild);
+            const embed = new EmbedBuilder()
+                .setTitle(`AI Action: ${action}`)
+                .setColor(action.includes('BAN') || action.includes('KICK') ? '#FF0000' : '#FFA500')
+                .addFields(
+                    { name: 'Target', value: target || 'N/A', inline: true },
+                    { name: 'Reason', value: reason || 'No reason provided.', inline: true },
+                    { name: 'Performer', value: performer || 'Unknown', inline: true }
+                )
+                .setTimestamp();
+            await logChannel.send({ embeds: [embed] });
+        } catch (e) {}
     }
 
-    private static findChannel(guild: Guild, query: string) {
-        return guild.channels.cache.get(query) || guild.channels.cache.find(c => c.name === query || c.name === query.replace('#', ''));
+    private static findChannel(guild: Guild, query: string | undefined) {
+        if (!query || typeof query !== 'string') return null;
+        const cleaned = query.replace('#', '').trim();
+        return guild.channels.cache.get(cleaned) ||
+               guild.channels.cache.find(c => c.name === cleaned);
     }
 
     static async execute(message: Message, action: string, data: any): Promise<string> {
         const guild = message.guild!;
-        const payload = data || {};
-        const reason = payload.reason || 'No reason provided by AI Manager.';
+        const payload = (data && typeof data === 'object') ? data : {};
+        const reason = (typeof payload.reason === 'string' && payload.reason.trim())
+            ? payload.reason.trim()
+            : 'No reason provided by AI Manager.';
 
         switch (action) {
             case 'warn': {
-                const user = await guild.members.fetch(payload.userId).catch(() => null);
-                if (!user) return `Failed to warn: User ${payload.userId} not found.`;
-                await this.logAction(guild, 'WARN', user.user.tag, reason, message.author.tag);
-                return `⚠️ **User Warned**: ${user.toString()} has been officially warned for: *${reason}*`;
+                const userId = payload.userId || payload.user_id;
+                if (!userId) return `Failed to warn: No user ID provided.`;
+                const member = await guild.members.fetch(userId).catch(() => null);
+                if (!member) return `Failed to warn: User ${userId} not found.`;
+                
+                const count = await WarnManager.addWarning(member.id, message.author.id, reason);
+                await this.logAction(guild, 'WARN', member.user.tag, reason, message.author.tag);
+                
+                let extra = '';
+                if (count >= 3) {
+                    await member.timeout(1000 * 60 * 60, 'Auto-timeout for reaching 3 warnings').catch(() => {});
+                    extra = `\n🚨 **Threshold reached**: User has been automatically timed out for 1 hour.`;
+                }
+
+                return `⚠️ **User Warned**: ${member.toString()} has been officially warned (**${count}/3**). Reason: *${reason}*${extra}`;
+            }
+            case 'timeout': {
+                const userId = payload.userId || payload.user_id;
+                const duration = parseInt(payload.duration) || 60; // default 60 mins
+                if (!userId) return `Failed to timeout: No user ID provided.`;
+                const member = await guild.members.fetch(userId).catch(() => null);
+                if (!member) return `Failed to timeout: User ${userId} not found.`;
+                
+                await member.timeout(duration * 60 * 1000, reason);
+                await this.logAction(guild, 'TIMEOUT', member.user.tag, `${duration}m: ${reason}`, message.author.tag);
+                return `🔇 **Timed out** **${member.user.tag}** for **${duration} minutes**. Reason: *${reason}*`;
+            }
+            case 'untimeout': {
+                const userId = payload.userId || payload.user_id;
+                if (!userId) return `Failed to unmute: No user ID provided.`;
+                const member = await guild.members.fetch(userId).catch(() => null);
+                if (!member) return `Failed to unmute: User ${userId} not found.`;
+                
+                await member.timeout(null, reason);
+                await this.logAction(guild, 'UNTIMEOUT', member.user.tag, reason, message.author.tag);
+                return `🔊 **Untimed out** **${member.user.tag}**. Reason: *${reason}*`;
+            }
+            case 'softban': {
+                const userId = payload.userId || payload.user_id;
+                if (!userId) return `Failed to softban: No user ID provided.`;
+                const member = await guild.members.fetch(userId).catch(() => null);
+                if (!member) return `Failed to softban: User ${userId} not found.`;
+                
+                const tag = member.user.tag;
+                await guild.members.ban(member, { reason: `Softban: ${reason}`, deleteMessageSeconds: 60 * 60 * 24 });
+                await guild.members.unban(member.id, 'Softban completion');
+                
+                await this.logAction(guild, 'SOFTBAN', tag, reason, message.author.tag);
+                return `🔨 **Softbanned** **${tag}** (Kicked and messages cleared). Reason: *${reason}*`;
             }
             case 'kick': {
-                const member = await guild.members.fetch(payload.userId).catch(() => null);
-                if (!member) return `Failed to kick: User ${payload.userId} not found.`;
+                const userId = payload.userId || payload.user_id;
+                if (!userId) return `Failed to kick: No user ID provided.`;
+                const member = await guild.members.fetch(userId).catch(() => null);
+                if (!member) return `Failed to kick: User ${userId} not found.`;
                 await member.kick(reason);
                 await this.logAction(guild, 'KICK', member.user.tag, reason, message.author.tag);
                 return `Successfully kicked **${member.user.tag}** for: *${reason}*`;
             }
             case 'ban': {
-                const user = await guild.client.users.fetch(payload.userId).catch(() => null);
-                if (!user) return `Failed to ban: User ${payload.userId} not found.`;
+                const userId = payload.userId || payload.user_id;
+                if (!userId) return `Failed to ban: No user ID provided.`;
+                const user = await guild.client.users.fetch(userId).catch(() => null);
+                if (!user) return `Failed to ban: User ${userId} not found.`;
                 await guild.members.ban(user, { reason });
                 await this.logAction(guild, 'BAN', user.tag, reason, message.author.tag);
                 return `Successfully banned **${user.tag}** for: *${reason}*`;
             }
+            case 'unban': {
+                const userId = payload.userId || payload.user_id;
+                if (!userId) return `Failed to unban: No user ID provided.`;
+                await guild.members.unban(userId, reason);
+                await this.logAction(guild, 'UNBAN', userId, reason, message.author.tag);
+                return `✅ **Unbanned** user ID \`${userId}\`. Reason: *${reason}*`;
+            }
             case 'purge': {
                 const amount = parseInt(payload.amount);
-                if (isNaN(amount) || amount < 1 || amount > 100) return `Failed to purge: Invalid amount (${payload.amount}).`;
+                if (isNaN(amount) || amount < 1 || amount > 100) return `Failed to purge: Invalid amount (${payload.amount}). Use 1-100.`;
                 const deleted = await (message.channel as TextChannel).bulkDelete(amount, true);
                 await this.logAction(guild, 'PURGE', `${deleted.size} messages in #${(message.channel as TextChannel).name}`, reason, message.author.tag);
                 return `Successfully purged **${deleted.size}** messages for: *${reason}*`;
@@ -78,42 +142,64 @@ export class ManagementManager {
                 await this.logAction(guild, 'SLOWMODE', `Set to ${duration}s in #${(message.channel as TextChannel).name}`, reason, message.author.tag);
                 return `Successfully set slowmode to **${duration}s** for: *${reason}*`;
             }
+            case 'clearWarnings': {
+                const userId = payload.userId || payload.user_id;
+                if (!userId) return `Failed to clear warnings: No user ID provided.`;
+                WarnManager.clearWarnings(userId);
+                await this.logAction(guild, 'CLEAR_WARNS', userId, reason, message.author.tag);
+                return `✨ **Warnings cleared** for user ID \`${userId}\`.`;
+            }
             case 'createRole': {
-                const role = await guild.roles.create({ name: payload.name, color: payload.color, reason });
+                const roleName = payload.name || payload.roleName;
+                if (!roleName) return `Failed to create role: No role name provided.`;
+                const role = await guild.roles.create({ name: roleName, color: payload.color || '#99AAB5', reason });
                 await this.logAction(guild, 'CREATE_ROLE', role.name, reason, message.author.tag);
                 return `Successfully created role **${role.name}** for: *${reason}*`;
             }
             case 'deleteRole': {
-                const role = guild.roles.cache.get(payload.roleId);
-                if (!role) return `Failed to delete role: ID ${payload.roleId} not found.`;
+                const roleId = payload.roleId || payload.role_id;
+                if (!roleId) return `Failed to delete role: No role ID provided.`;
+                const role = guild.roles.cache.get(roleId);
+                if (!role) return `Failed to delete role: ID ${roleId} not found.`;
                 await role.delete(reason);
                 await this.logAction(guild, 'DELETE_ROLE', role.name, reason, message.author.tag);
                 return `Successfully deleted role **${role.name}** for: *${reason}*`;
             }
             case 'setNickname': {
-                const member = await guild.members.fetch(payload.userId).catch(() => null);
-                if (!member) return `Failed to set nickname: User ${payload.userId} not found.`;
-                await member.setNickname(payload.nickname, reason);
-                await this.logAction(guild, 'SET_NICKNAME', `${member.user.tag} -> ${payload.nickname}`, reason, message.author.tag);
-                return `Successfully changed **${member.user.tag}** nickname to **${payload.nickname}** for: *${reason}*`;
+                const userId = payload.userId || payload.user_id;
+                const nickname = payload.nickname || payload.nick;
+                if (!userId) return `Failed to set nickname: No user ID provided.`;
+                const member = await guild.members.fetch(userId).catch(() => null);
+                if (!member) return `Failed to set nickname: User ${userId} not found.`;
+                await member.setNickname(nickname || null, reason);
+                await this.logAction(guild, 'SET_NICKNAME', `${member.user.tag} -> ${nickname}`, reason, message.author.tag);
+                return `Successfully changed **${member.user.tag}** nickname to **${nickname}** for: *${reason}*`;
             }
             case 'sendMessage': {
-                const channel = this.findChannel(guild, payload.channelId || payload.channelName) as TextChannel;
-                if (!channel || !channel.isTextBased()) return `Failed to send message: Channel ${payload.channelId || payload.channelName} not found.`;
-                await channel.send(payload.content);
-                await this.logAction(guild, 'SEND_MESSAGE', `Message sent to #${channel.name}`, reason, message.author.tag);
+                const query = payload.channelId || payload.channelName || payload.channel;
+                const channel = (query ? this.findChannel(guild, String(query)) : message.channel) as TextChannel;
+                if (!channel || !channel.isTextBased()) return `Failed to send message: Channel not found.`;
+                const content = payload.content || payload.message || payload.text;
+                if (!content || typeof content !== 'string') return `Failed to send message: No content provided.`;
+                await channel.send(content);
+                await this.logAction(guild, 'SEND_MESSAGE', `#${channel.name}`, reason, message.author.tag);
                 return `Successfully sent message to **#${channel.name}** for: *${reason}*`;
             }
             case 'setChannelTopic': {
-                const channel = this.findChannel(guild, payload.channelId || payload.channelName || message.channelId) as TextChannel;
-                if (!channel || !channel.setTopic) return `Failed to set topic: Invalid channel.`;
-                await channel.setTopic(payload.topic, reason);
-                await this.logAction(guild, 'SET_TOPIC', `Topic updated in #${channel.name}`, reason, message.author.tag);
+                const query = payload.channelId || payload.channelName || payload.channel;
+                const channel = (query ? this.findChannel(guild, String(query)) : message.channel) as TextChannel;
+                if (!channel || typeof (channel as any).setTopic !== 'function') return `Failed to set topic: Invalid channel.`;
+                const topic = payload.topic || payload.description;
+                if (!topic || typeof topic !== 'string') return `Failed to set topic: No topic provided.`;
+                await (channel as any).setTopic(topic, reason);
+                await this.logAction(guild, 'SET_TOPIC', `#${channel.name}`, reason, message.author.tag);
                 return `Successfully updated topic in **#${channel.name}** for: *${reason}*`;
             }
             case 'createChannel': {
+                const chanName = payload.name || payload.channelName;
+                if (!chanName) return `Failed to create channel: No channel name provided.`;
                 const channel = await guild.channels.create({
-                    name: payload.name,
+                    name: chanName,
                     type: payload.type === 'voice' ? ChannelType.GuildVoice : ChannelType.GuildText,
                     reason
                 });
@@ -121,8 +207,9 @@ export class ManagementManager {
                 return `Successfully created channel **#${channel.name}** for: *${reason}*`;
             }
             case 'deleteChannel': {
-                const channel = this.findChannel(guild, payload.channelId || payload.channelName);
-                if (!channel) return `Failed to delete channel: ${payload.channelId || payload.channelName} not found.`;
+                const query = payload.channelId || payload.channelName || payload.channel;
+                const channel = this.findChannel(guild, String(query || ''));
+                if (!channel) return `Failed to delete channel: Channel not found.`;
                 const name = channel.name;
                 await channel.delete(reason);
                 await this.logAction(guild, 'DELETE_CHANNEL', name, reason, message.author.tag);

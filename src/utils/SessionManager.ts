@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
+import { AIMessage } from '../providers/ProviderManager';
 
 export interface Session {
-    history: string[];
+    history: AIMessage[];
     lastActivity: number;
 }
 
@@ -20,8 +21,10 @@ export class SessionManager {
     }
 
     private static save() {
-        const data = Object.fromEntries(this.sessions);
-        fs.writeFileSync(this.sessionsFile, JSON.stringify(data, null, 2));
+        try {
+            const data = Object.fromEntries(this.sessions);
+            fs.writeFileSync(this.sessionsFile, JSON.stringify(data, null, 2));
+        } catch (e) {}
     }
 
     static has(userId: string): boolean {
@@ -38,6 +41,10 @@ export class SessionManager {
 
     static set(userId: string, session: Session) {
         session.lastActivity = Date.now();
+        // Cap history at 20 messages to keep context manageable
+        if (session.history.length > 20) {
+            session.history = session.history.slice(-20);
+        }
         this.sessions.set(userId, session);
         this.save();
     }
