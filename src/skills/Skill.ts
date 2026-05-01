@@ -1,5 +1,4 @@
 import { Message } from 'discord.js';
-
 export interface Skill {
     actionId: string;
     name: string;

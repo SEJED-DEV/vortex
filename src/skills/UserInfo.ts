@@ -1,6 +1,6 @@
+import { EMBED_COLOR, EMBED_FOOTER_TEXT, BOT_NAME } from '../utils/Config';
 import { Message, EmbedBuilder, GuildMember } from 'discord.js';
 import { Skill } from './Skill';
-
 const UserInfo: Skill = {
     name: 'User Info',
     description: 'Fetches detailed information about a server member (join date, roles, status, account age)',
@@ -9,22 +9,18 @@ const UserInfo: Skill = {
     execute: async (message: Message, data: any): Promise<string> => {
         const guild = message.guild!;
         const userId = data?.userId || data?.user_id || message.author.id;
-
         const member: GuildMember | null = await guild.members.fetch(userId).catch(() => null);
         if (!member) return `❌ Could not find user with ID \`${userId}\` in this server.`;
-
         const user = member.user;
         const roles = member.roles.cache
             .filter(r => r.id !== guild.roles.everyone.id)
             .sort((a, b) => b.position - a.position)
             .map(r => r.toString())
             .slice(0, 10);
-
         const accountAge = Math.floor((Date.now() - user.createdTimestamp) / (1000 * 60 * 60 * 24));
         const joinAge = member.joinedTimestamp
             ? Math.floor((Date.now() - member.joinedTimestamp) / (1000 * 60 * 60 * 24))
             : 0;
-
         const embed = new EmbedBuilder()
             .setTitle(`👤 User Info: ${user.tag}`)
             .setThumbnail(user.displayAvatarURL({ size: 256 }))
@@ -39,9 +35,7 @@ const UserInfo: Skill = {
             )
             .setFooter({ text: `Requested by ${message.author.tag}` })
             .setTimestamp();
-
         return { embeds: [embed] } as any;
     }
 };
-
 export default UserInfo;

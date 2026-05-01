@@ -1,7 +1,6 @@
 import { Message } from 'discord.js';
 import { Skill } from './Skill';
 import { ServerBuilder } from '../utils/ServerBuilder';
-
 const ServerArchitect: Skill = {
     name: 'Server Architect',
     description: 'Build professional server structures (roles, categories, channels)',
@@ -16,5 +15,4 @@ const ServerArchitect: Skill = {
         return completionMsg;
     }
 };
-
 export default ServerArchitect;

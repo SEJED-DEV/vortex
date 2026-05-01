@@ -1,9 +1,7 @@
 import { Guild, TextChannel, Message, EmbedBuilder, ChannelType } from 'discord.js';
 import { WarnManager } from './WarnManager';
-
 export class ManagementManager {
     private static LOG_CHANNEL_NAME = 'ai-actions-logs';
-
     private static async getLogChannel(guild: Guild): Promise<TextChannel> {
         let channel = guild.channels.cache.find(c => c.name === this.LOG_CHANNEL_NAME && c.isTextBased()) as TextChannel;
         if (!channel) {
@@ -20,7 +18,6 @@ export class ManagementManager {
         }
         return channel;
     }
-
     public static async logAction(guild: Guild, action: string, target: string, reason: string, performer: string) {
         try {
             const logChannel = await this.getLogChannel(guild);
@@ -36,46 +33,39 @@ export class ManagementManager {
             await logChannel.send({ embeds: [embed] });
         } catch (e) {}
     }
-
     private static findChannel(guild: Guild, query: string | undefined) {
         if (!query || typeof query !== 'string') return null;
         const cleaned = query.replace('#', '').trim();
         return guild.channels.cache.get(cleaned) ||
                guild.channels.cache.find(c => c.name === cleaned);
     }
-
     static async execute(message: Message, action: string, data: any): Promise<string> {
         const guild = message.guild!;
         const payload = (data && typeof data === 'object') ? data : {};
         const reason = (typeof payload.reason === 'string' && payload.reason.trim())
             ? payload.reason.trim()
             : 'No reason provided by AI Manager.';
-
         switch (action) {
             case 'warn': {
                 const userId = payload.userId || payload.user_id;
                 if (!userId) return `Failed to warn: No user ID provided.`;
                 const member = await guild.members.fetch(userId).catch(() => null);
                 if (!member) return `Failed to warn: User ${userId} not found.`;
-                
                 const count = await WarnManager.addWarning(member.id, message.author.id, reason);
                 await this.logAction(guild, 'WARN', member.user.tag, reason, message.author.tag);
-                
                 let extra = '';
                 if (count >= 3) {
                     await member.timeout(1000 * 60 * 60, 'Auto-timeout for reaching 3 warnings').catch(() => {});
                     extra = `\n🚨 **Threshold reached**: User has been automatically timed out for 1 hour.`;
                 }
-
                 return `⚠️ **User Warned**: ${member.toString()} has been officially warned (**${count}/3**). Reason: *${reason}*${extra}`;
             }
             case 'timeout': {
                 const userId = payload.userId || payload.user_id;
-                const duration = parseInt(payload.duration) || 60; // default 60 mins
+                const duration = parseInt(payload.duration) || 60; 
                 if (!userId) return `Failed to timeout: No user ID provided.`;
                 const member = await guild.members.fetch(userId).catch(() => null);
                 if (!member) return `Failed to timeout: User ${userId} not found.`;
-                
                 await member.timeout(duration * 60 * 1000, reason);
                 await this.logAction(guild, 'TIMEOUT', member.user.tag, `${duration}m: ${reason}`, message.author.tag);
                 return `🔇 **Timed out** **${member.user.tag}** for **${duration} minutes**. Reason: *${reason}*`;
@@ -85,7 +75,6 @@ export class ManagementManager {
                 if (!userId) return `Failed to unmute: No user ID provided.`;
                 const member = await guild.members.fetch(userId).catch(() => null);
                 if (!member) return `Failed to unmute: User ${userId} not found.`;
-                
                 await member.timeout(null, reason);
                 await this.logAction(guild, 'UNTIMEOUT', member.user.tag, reason, message.author.tag);
                 return `🔊 **Untimed out** **${member.user.tag}**. Reason: *${reason}*`;
@@ -95,11 +84,9 @@ export class ManagementManager {
                 if (!userId) return `Failed to softban: No user ID provided.`;
                 const member = await guild.members.fetch(userId).catch(() => null);
                 if (!member) return `Failed to softban: User ${userId} not found.`;
-                
                 const tag = member.user.tag;
                 await guild.members.ban(member, { reason: `Softban: ${reason}`, deleteMessageSeconds: 60 * 60 * 24 });
                 await guild.members.unban(member.id, 'Softban completion');
-                
                 await this.logAction(guild, 'SOFTBAN', tag, reason, message.author.tag);
                 return `🔨 **Softbanned** **${tag}** (Kicked and messages cleared). Reason: *${reason}*`;
             }

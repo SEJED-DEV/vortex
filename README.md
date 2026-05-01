@@ -5,25 +5,34 @@ Vortex is a state-of-the-art, AI-driven Discord management engine designed for h
 
 ## 🚀 Advanced Capabilities
 
-### 🧠 Vision-Capable AI Core
-Vortex isn't just a text bot. It can **see**.
-- **Image Analysis**: Upload an image or send a link, and Vortex will describe, analyze, and react to it.
-- **Multimodal Intelligence**: Uses Gemini 1.5 Pro and Claude 3.5 Sonnet to understand complex visual contexts.
+### 🧠 Free-Tier "No Paywall" Architecture
+Vortex is configured to use industry-leading free APIs, bypassing expensive token limits:
+- **Lightning LLMs**: Powered by **Groq** (Llama 3.3) and **Gemini API** for ultra-fast, free reasoning.
+- **Limitless Web Search**: Uses **DuckDuckGo** scrapers instead of paid APIs to fetch live internet data instantly.
+- **Infinite Image Generation**: Uses **Pollinations.ai** to generate stunning images without an API key.
 
-### 🛡️ Advanced Moderation Suite
+### 📚 Omniscient Logging & Memory
+Vortex literally *never forgets*. 
+- **Persistent User Profiles**: Every interaction, chat, and command is permanently logged to `data/users/<userId>.json`.
+- **System Console**: Every system action and AI thought process is recorded in `data/logs/console.log`.
+- Vortex dynamically loads your chat history into its context, providing true memory across restarts.
+
+### 🛡️ Advanced Moderation & Security
 Professional-grade tools for community safety.
-- **Persistent Warnings**: 3-warn threshold with automatic 1-hour timeouts.
-- **Native Timeouts**: AI-driven muting using Discord's built-in system.
+- **Security Auditor**: Scans roles for dangerous permissions, detects exposed webhooks, and checks MFA levels.
+- **Native Timeouts & Warnings**: AI-driven muting and warning system.
 - **Softbans & Purges**: Instantly clear chat history while removing bad actors.
-- **Action Auditing**: Every AI decision is logged in `#ai-actions-logs` with reasoning.
 
-### 🧩 Power-Skill Modules
-Vortex comes pre-loaded with high-end capabilities:
-- 🎨 **AI Image Artist**: Generate stunning artwork via Flux & DALL-E 3 directly in chat.
-- 🔍 **Web Search**: Real-time internet access via Perplexity to answer current-event questions.
-- 🌐 **GitHub Pulse**: Live repository tracking (commits, PRs, issues) posted to your channels.
-- 🤖 **Dynamic Auto-Responder**: Admins can set custom triggers and responses on the fly.
-- 📊 **Server Analytics**: Deep-dive into server health, sentiment, and member statistics.
+### 🧩 Available Skills (Commands)
+Vortex responds natively to conversational requests using these underlying modules:
+- `vortexXP` — View your leveling Rank Card, XP multipliers, or the Server Leaderboard.
+- `createPoll` — Create interactive, button-based polls with live vote counting.
+- `generateImage` — Generate artwork from text using Pollinations.ai.
+- `webSearch` — Search the live web using DuckDuckGo.
+- `serverStats` — Generate an embed showing population growth, VC engagement, and server health.
+- `autoResponder` — Add regex-supported chat triggers with randomized responses (Staff Only).
+- `githubPulse` — Track live GitHub repository commits/PRs (Admin Only).
+- `securityAudit` — Run a deep vulnerability scan on the server (Admin Only).
 
 ### 🛠️ Self-Evolution & Integrity
 - **Autonomous Patching**: The bot can read, debug, and upgrade its own source code via the `evolve` skill.
@@ -41,11 +50,13 @@ Vortex comes pre-loaded with high-end capabilities:
    ```
 
 2. **Environment Configuration**:
-   Rename `.env.example` to `.env` and provide your API keys.
+   Rename `.env.example` to `.env` and provide your optional API keys.
    ```env
-   DISCORD_TOKEN=...
-   OPENROUTER_API_KEY=...
-   GEMINI_API_KEY=...
+   DISCORD_TOKEN=your_bot_token
+   # AI Providers
+   GROQ_API_KEY=optional_but_recommended
+   GEMINI_API_KEY=optional_but_recommended
+   OPENROUTER_API_KEY=optional
    ```
 
 3. **Deploy**:
@@ -62,7 +73,7 @@ Vortex uses a **Modular Handler Pattern**:
 - **`ProviderManager`**: Manages model rotation and fallbacks.
 - **`ManagementManager`**: Executes low-level Discord actions (bans, roles, channels).
 - **`SkillManager`**: Dynamically loads `.ts` modules from the `src/skills` directory.
-- **`SessionManager`**: Maintains multi-turn conversation history.
+- **`SessionManager`**: Maintains multi-turn conversation history with persistent JSON logging.
 
 ---
 
@@ -72,3 +83,4 @@ This project is licensed under the **CC BY-NC-SA 4.0**. See `LICENSE` for detail
 ## 👨‍💻 Developed by Sejed TRABELSSI
 - **Support**: [Discord Server](https://discord.gg/pun3PXXDuE)
 - **Instagram**: [@http.sejed.official](https://www.instagram.com/http.sejed.official/)
+

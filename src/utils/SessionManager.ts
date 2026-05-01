@@ -1,58 +1,69 @@
 import fs from 'fs';
 import path from 'path';
 import { AIMessage } from '../providers/ProviderManager';
-
-export interface Session {
-    history: AIMessage[];
-    lastActivity: number;
+export interface UserProfile {
+    id: string;
+    username: string;
+    firstSeen: number;
+    lastActive: number;
+    history: { role: string; content: any; timestamp: number }[];
+    actionsTaken: { action: string; data: any; timestamp: number }[];
 }
-
 export class SessionManager {
-    private static sessionsFile = path.join(__dirname, '../../sessions.json');
-    private static sessions: Map<string, Session> = new Map();
-
-    static load() {
-        if (fs.existsSync(this.sessionsFile)) {
+    private static USERS_DIR = path.join(process.cwd(), 'data', 'users');
+    private static init() {
+        if (!fs.existsSync(this.USERS_DIR)) {
+            fs.mkdirSync(this.USERS_DIR, { recursive: true });
+        }
+    }
+    private static getFilePath(userId: string): string {
+        return path.join(this.USERS_DIR, `${userId}.json`);
+    }
+    public static getProfile(userId: string, username: string = "Unknown"): UserProfile {
+        this.init();
+        const file = this.getFilePath(userId);
+        if (fs.existsSync(file)) {
             try {
-                const data = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8'));
-                this.sessions = new Map(Object.entries(data));
-            } catch (e) {}
+                return JSON.parse(fs.readFileSync(file, 'utf-8'));
+            } catch (e) {
+                console.error(`Error reading profile for ${userId}:`, e);
+            }
         }
+        return {
+            id: userId,
+            username,
+            firstSeen: Date.now(),
+            lastActive: Date.now(),
+            history: [],
+            actionsTaken: []
+        };
     }
-
-    private static save() {
-        try {
-            const data = Object.fromEntries(this.sessions);
-            fs.writeFileSync(this.sessionsFile, JSON.stringify(data, null, 2));
-        } catch (e) {}
+    public static saveProfile(profile: UserProfile) {
+        this.init();
+        profile.lastActive = Date.now();
+        const file = this.getFilePath(profile.id);
+        fs.writeFileSync(file, JSON.stringify(profile, null, 2));
     }
-
-    static has(userId: string): boolean {
-        return this.sessions.has(userId);
+    static getContextHistory(userId: string, limit: number = 20): AIMessage[] {
+        const profile = this.getProfile(userId);
+        return profile.history.slice(-limit).map(h => ({
+            role: h.role as 'system' | 'user' | 'assistant',
+            content: h.content
+        }));
     }
-
-    static get(userId: string): Session {
-        if (!this.sessions.has(userId)) {
-            this.sessions.set(userId, { history: [], lastActivity: 0 });
-            this.save();
-        }
-        return this.sessions.get(userId)!;
+    static addMessage(userId: string, username: string, role: 'system' | 'user' | 'assistant', content: any) {
+        const profile = this.getProfile(userId, username);
+        profile.history.push({ role, content, timestamp: Date.now() });
+        this.saveProfile(profile);
     }
-
-    static set(userId: string, session: Session) {
-        session.lastActivity = Date.now();
-        // Cap history at 20 messages to keep context manageable
-        if (session.history.length > 20) {
-            session.history = session.history.slice(-20);
-        }
-        this.sessions.set(userId, session);
-        this.save();
+    static addAction(userId: string, username: string, actionName: string, data: any) {
+        const profile = this.getProfile(userId, username);
+        profile.actionsTaken.push({ action: actionName, data, timestamp: Date.now() });
+        this.saveProfile(profile);
     }
-
-    static delete(userId: string) {
-        this.sessions.delete(userId);
-        this.save();
+    static clearHistory(userId: string) {
+        const profile = this.getProfile(userId);
+        profile.history = [];
+        this.saveProfile(profile);
     }
 }
-
-SessionManager.load();

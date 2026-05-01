@@ -1,7 +1,7 @@
+import { EMBED_COLOR, EMBED_FOOTER_TEXT, BOT_NAME } from '../utils/Config';
 import { Message, EmbedBuilder } from 'discord.js';
 import { Skill } from './Skill';
 import axios from 'axios';
-
 export const WebSearch: Skill = {
     actionId: 'webSearch',
     name: 'Web Search',
@@ -10,48 +10,27 @@ export const WebSearch: Skill = {
     execute: async (message: Message, data: any): Promise<any> => {
         const query = data.query;
         if (!query) return "❌ Please provide a search query.";
-
-        const key = process.env.OPENROUTER_API_KEY;
-        if (!key) return "❌ OpenRouter API key is missing. Cannot perform web search.";
-
-        const models = ['perplexity/sonar', 'google/gemini-2.0-flash-thinking-exp:free', 'openai/gpt-4o-mini'];
-        let lastError = '';
-
-        for (const modelId of models) {
-            try {
-                const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-                    model: modelId,
-                    messages: [{ role: 'user', content: query }]
-                }, {
-                    headers: {
-                        'Authorization': `Bearer ${key}`,
-                        'Content-Type': 'application/json',
-                        'HTTP-Referer': 'https://github.com/SEJED-DEV/vortex',
-                        'X-Title': 'Vortex Manager'
-                    },
-                    timeout: 60000
-                });
-
-                const result = response.data?.choices?.[0]?.message?.content;
-                if (!result) continue;
-
-                const embed = new EmbedBuilder()
-                    .setTitle(`🔍 Search: ${query}`)
-                    .setDescription(result.length > 4000 ? result.substring(0, 4000) + '...' : result)
-                    .setColor('#00FFFF')
-                    .setFooter({ text: `Powered by ${modelId}` })
-                    .setTimestamp();
-
-                return { embeds: [embed] };
-            } catch (error: any) {
-                lastError = error.message;
-                if (error.response?.data?.error?.message) lastError = error.response.data.error.message;
-                continue;
+        try {
+            const { search } = require('duck-duck-scrape');
+            const searchResults = await search(query, { safeSearch: 'moderate' });
+            if (!searchResults || !searchResults.results || searchResults.results.length === 0) {
+                return "ℹ️ No results found for that query.";
             }
+            const topResults = searchResults.results.slice(0, 3);
+            let description = '';
+            topResults.forEach((res: any, i: number) => {
+                description += `**${i + 1}. [${res.title}](${res.url})**\n${res.description}\n\n`;
+            });
+            const embed = new EmbedBuilder()
+                .setTitle(`🔍 Web Search: ${query}`)
+                .setDescription(description)
+                .setColor(EMBED_COLOR as any)
+                .setFooter({ text: `Powered by DuckDuckGo (Free Tier)` })
+                .setTimestamp();
+            return { embeds: [embed] };
+        } catch (error: any) {
+            return `❌ Web search failed. Error: ${error.message}`;
         }
-
-        return `❌ Web search failed after trying all available models. Last error: ${lastError}`;
     }
 };
-
 export default WebSearch;

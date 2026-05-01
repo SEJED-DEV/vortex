@@ -1,152 +1,2 @@
-import { Message, EmbedBuilder } from 'discord.js';
-import { Skill } from './Skill';
-import fs from 'fs';
-import path from 'path';
-
-interface UserXP {
-    xp: number;
-    level: number;
-    lastMsg: number;
-}
-
-export class LevelManager {
-    private static FILE_PATH = path.join(process.cwd(), 'data', 'levels.json');
-
-    private static init() {
-        const dir = path.dirname(this.FILE_PATH);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        if (!fs.existsSync(this.FILE_PATH)) fs.writeFileSync(this.FILE_PATH, JSON.stringify({}));
-    }
-
-    public static getData(): Record<string, UserXP> {
-        this.init();
-        return JSON.parse(fs.readFileSync(this.FILE_PATH, 'utf-8'));
-    }
-
-    public static async addXP(member: import('discord.js').GuildMember, amount: number): Promise<{ leveledUp: boolean, newLevel: number }> {
-        const userId = member.id;
-        const data = this.getData();
-        if (!data[userId]) {
-            data[userId] = { xp: 0, level: 0, lastMsg: 0 };
-        }
-
-        const user = data[userId];
-        const now = Date.now();
-
-        // 1 minute cooldown per XP gain to prevent spam
-        if (now - user.lastMsg < 60000) return { leveledUp: false, newLevel: user.level };
-
-        // Apply XP Multiplier (e.g., if user has a premium role or is boosting)
-        // You can set the multiplier role ID in .env, or default to a generic check (like Premium Subscriber)
-        const multiplierRoleId = process.env.XP_MULTIPLIER_ROLE_ID;
-        let finalAmount = amount;
-        if (multiplierRoleId && member.roles.cache.has(multiplierRoleId)) {
-            finalAmount = Math.floor(amount * 1.5); // 1.5x XP Boost
-        } else if (member.premiumSince) {
-            finalAmount = Math.floor(amount * 1.2); // 1.2x Server Booster Boost
-        }
-
-        user.xp += finalAmount;
-        user.lastMsg = now;
-
-        const nextLevelXP = (user.level + 1) * 500;
-        let leveledUp = false;
-
-        if (user.xp >= nextLevelXP) {
-            user.level += 1;
-            leveledUp = true;
-            
-            // Check for Role Rewards
-            try {
-                // Example configuration: { "5": "123456789", "10": "987654321" }
-                const rewardsConfig = process.env.ROLE_REWARDS ? JSON.parse(process.env.ROLE_REWARDS) : {};
-                const rewardRoleId = rewardsConfig[user.level.toString()];
-                
-                if (rewardRoleId && !member.roles.cache.has(rewardRoleId)) {
-                    await member.roles.add(rewardRoleId, `Reached Level ${user.level}`);
-                }
-            } catch (e) {
-                console.error("Failed to parse or assign Role Rewards:", e);
-            }
-        }
-
-        fs.writeFileSync(this.FILE_PATH, JSON.stringify(data, null, 2));
-        return { leveledUp, newLevel: user.level };
-    }
-
-    public static getRank(userId: string): UserXP | null {
-        const data = this.getData();
-        return data[userId] || null;
-    }
-    public static getLeaderboard(): { userId: string, xp: number, level: number }[] {
-        const data = this.getData();
-        return Object.keys(data)
-            .map(userId => ({ userId, xp: data[userId].xp, level: data[userId].level }))
-            .sort((a, b) => b.xp - a.xp)
-            .slice(0, 10);
-    }
-}
-
-export const LevelingSystem: Skill = {
-    actionId: 'vortexXP',
-    name: 'Vortex XP System',
-    description: 'Check your current rank, view the server leaderboard, or manage XP settings.',
-    jsonStructure: '{"action": "vortexXP", "data": {"subAction": "checkRank|leaderboard", "userId": "OPTIONAL_ID"}}',
-    execute: async (message: Message, data: any): Promise<any> => {
-        const subAction = data.subAction || 'checkRank';
-
-        if (subAction === 'leaderboard') {
-            const topUsers = LevelManager.getLeaderboard();
-            if (topUsers.length === 0) return "ℹ️ The leaderboard is currently empty.";
-
-            const embed = new EmbedBuilder()
-                .setTitle('🏆 Vortex XP Leaderboard')
-                .setColor('#FFD700')
-                .setTimestamp();
-
-            let description = '';
-            for (let i = 0; i < topUsers.length; i++) {
-                const userObj = topUsers[i];
-                // Using tags if available, otherwise just mention
-                description += `**${i + 1}.** <@${userObj.userId}> — Level \`${userObj.level}\` (${userObj.xp} XP)\n`;
-            }
-            embed.setDescription(description);
-
-            return { embeds: [embed] };
-        }
-
-        // checkRank fallback
-        const targetId = data.userId || message.author.id;
-        const rank = LevelManager.getRank(targetId);
-        
-        let targetUser;
-        try {
-            targetUser = await message.client.users.fetch(targetId);
-        } catch {
-            return `❌ Could not find user with ID ${targetId}.`;
-        }
-
-        if (!rank) {
-            return `ℹ️ **${targetUser.username}** hasn't earned any XP yet! Start chatting to level up.`;
-        }
-
-        const nextLevelXP = (rank.level + 1) * 500;
-        const progress = (rank.xp / nextLevelXP) * 100;
-        const progressBar = '🟩'.repeat(Math.floor(progress / 10)) + '⬜'.repeat(10 - Math.floor(progress / 10));
-
-        const embed = new EmbedBuilder()
-            .setTitle(`🎖️ Rank Card: ${targetUser.username}`)
-            .setThumbnail(targetUser.displayAvatarURL())
-            .setColor('#FFD700')
-            .addFields(
-                { name: 'Level', value: `\`${rank.level}\``, inline: true },
-                { name: 'Total XP', value: `\`${rank.xp}\``, inline: true },
-                { name: 'Progress to Level ' + (rank.level + 1), value: `${progressBar} (${Math.floor(progress)}%)` }
-            )
-            .setFooter({ text: 'Keep chatting to earn more XP!' });
-
-        return { embeds: [embed] };
-    }
-};
-
-export default LevelingSystem;
+import { EMBED_COLOR, EMBED_FOOTER_TEXT, BOT_NAME } from '../utils/Config';
+import { Message, EmbedBuilder } from 'discord.js';import { Skill } from './Skill';import fs from 'fs';import path from 'path';interface UserXP {    xp: number;    level: number;    lastMsg: number;}export class LevelManager {    private static FILE_PATH = path.join(process.cwd(), 'data', 'levels.json');    private static init() {        const dir = path.dirname(this.FILE_PATH);        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });        if (!fs.existsSync(this.FILE_PATH)) fs.writeFileSync(this.FILE_PATH, JSON.stringify({}));    }    public static getData(): Record<string, UserXP> {        this.init();        return JSON.parse(fs.readFileSync(this.FILE_PATH, 'utf-8'));    }    public static async addXP(member: import('discord.js').GuildMember, amount: number): Promise<{ leveledUp: boolean, newLevel: number }> {        const userId = member.id;        const data = this.getData();        if (!data[userId]) {            data[userId] = { xp: 0, level: 0, lastMsg: 0 };        }        const user = data[userId];        const now = Date.now();        if (now - user.lastMsg < 60000) return { leveledUp: false, newLevel: user.level };        const multiplierRoleId = process.env.XP_MULTIPLIER_ROLE_ID;        let finalAmount = amount;        if (multiplierRoleId && member.roles.cache.has(multiplierRoleId)) {            finalAmount = Math.floor(amount * 1.5);         } else if (member.premiumSince) {            finalAmount = Math.floor(amount * 1.2);         }        user.xp += finalAmount;        user.lastMsg = now;        const nextLevelXP = (user.level + 1) * 500;        let leveledUp = false;        if (user.xp >= nextLevelXP) {            user.level += 1;            leveledUp = true;            try {                const rewardsConfig = process.env.ROLE_REWARDS ? JSON.parse(process.env.ROLE_REWARDS) : {};                const rewardRoleId = rewardsConfig[user.level.toString()];                if (rewardRoleId && !member.roles.cache.has(rewardRoleId)) {                    await member.roles.add(rewardRoleId, `Reached Level ${user.level}`);                }            } catch (e) {                console.error("Failed to parse or assign Role Rewards:", e);            }        }        fs.writeFileSync(this.FILE_PATH, JSON.stringify(data, null, 2));        return { leveledUp, newLevel: user.level };    }    public static getRank(userId: string): UserXP | null {        const data = this.getData();        return data[userId] || null;    }    public static getLeaderboard(): { userId: string, xp: number, level: number }[] {        const data = this.getData();        return Object.keys(data)            .map(userId => ({ userId, xp: data[userId].xp, level: data[userId].level }))            .sort((a, b) => b.xp - a.xp)            .slice(0, 10);    }}export const LevelingSystem: Skill = {    actionId: 'vortexXP',    name: 'Vortex XP System',    description: 'Check your current rank, view the server leaderboard, or manage XP settings.',    jsonStructure: '{"action": "vortexXP", "data": {"subAction": "checkRank|leaderboard", "userId": "OPTIONAL_ID"}}',    execute: async (message: Message, data: any): Promise<any> => {        const subAction = data.subAction || 'checkRank';        if (subAction === 'leaderboard') {            const topUsers = LevelManager.getLeaderboard();            if (topUsers.length === 0) return "ℹ️ The leaderboard is currently empty.";            const embed = new EmbedBuilder()                .setTitle('🏆 Vortex XP Leaderboard')                .setColor(EMBED_COLOR as any)                .setTimestamp();            let description = '';            for (let i = 0; i < topUsers.length; i++) {                const userObj = topUsers[i];                // Using tags if available, otherwise just mention                description += `**${i + 1}.** <@${userObj.userId}> — Level \`${userObj.level}\` (${userObj.xp} XP)\n`;            }            embed.setDescription(description);            return { embeds: [embed] };        }        // checkRank fallback        const targetId = data.userId || message.author.id;        const rank = LevelManager.getRank(targetId);        let targetUser;        try {            targetUser = await message.client.users.fetch(targetId);        } catch {            return `❌ Could not find user with ID ${targetId}.`;        }        if (!rank) {            return `ℹ️ **${targetUser.username}** hasn't earned any XP yet! Start chatting to level up.`;        }        const nextLevelXP = (rank.level + 1) * 500;        const progress = (rank.xp / nextLevelXP) * 100;        const progressBar = '🟩'.repeat(Math.floor(progress / 10)) + '⬜'.repeat(10 - Math.floor(progress / 10));        const embed = new EmbedBuilder()            .setTitle(`🎖️ Rank Card: ${targetUser.username}`)            .setThumbnail(targetUser.displayAvatarURL())            .setColor(EMBED_COLOR as any)            .addFields(                { name: 'Level', value: `\`${rank.level}\``, inline: true },                { name: 'Total XP', value: `\`${rank.xp}\``, inline: true },                { name: 'Progress to Level ' + (rank.level + 1), value: `${progressBar} (${Math.floor(progress)}%)` }            )            .setFooter({ text: EMBED_FOOTER_TEXT });        return { embeds: [embed] };    }};export default LevelingSystem;

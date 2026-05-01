@@ -5,7 +5,6 @@ import path from 'path';
 import { exec } from 'child_process';
 import { ManagementManager } from '../utils/ManagementManager';
 import { GitHubManager } from '../utils/GitHubManager';
-
 const SelfEvolution: Skill = {
     name: 'Self Evolution',
     description: 'Read, modify, and upgrade the bot\'s own source code (Admin only)',
@@ -15,14 +14,11 @@ const SelfEvolution: Skill = {
         if (!message.member?.permissions.has(PermissionsBitField.Flags.Administrator)) {
             return "Unauthorized: Only server administrators can trigger evolution actions.";
         }
-
         const baseDir = path.join(__dirname, '../../');
-        
         switch (data.type) {
             case 'read': {
                 const targetPath = path.join(baseDir, data.path);
                 if (!fs.existsSync(targetPath)) return `Error: Path ${data.path} not found.`;
-                
                 const stats = fs.statSync(targetPath);
                 if (stats.isDirectory()) {
                     const files = fs.readdirSync(targetPath);
@@ -36,12 +32,9 @@ const SelfEvolution: Skill = {
                 const filePath = path.join(baseDir, data.path);
                 const dirPath = path.dirname(filePath);
                 if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-                
                 const oldContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf-8') : '[New File]';
                 fs.writeFileSync(filePath, data.content);
-                
                 await ManagementManager.logAction(message.guild!, 'SELF_EVOLVE', `Modified ${data.path}`, `Code Change Recorded.`, message.author.tag);
-                
                 return `Successfully updated ${data.path}. Use 'rebuild' to apply changes.`;
             }
             case 'push': {
@@ -64,5 +57,4 @@ const SelfEvolution: Skill = {
         }
     }
 };
-
 export default SelfEvolution;

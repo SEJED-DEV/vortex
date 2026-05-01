@@ -1,23 +1,18 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
-
 dotenv.config();
-
 export interface AIMessage {
     role: 'user' | 'assistant' | 'system';
     content: string;
 }
-
 export interface AIResponse {
     text: string | null;
     model: string;
 }
-
 export interface VisionContent {
     imageUrl: string;
     mimeType: string;
 }
-
 export class ProviderManager {
     private providers = ['gemini', 'openrouter', 'openai', 'claude', 'groq', 'mistral'];
     private openRouterModels = [
@@ -29,7 +24,6 @@ export class ProviderManager {
         'deepseek/deepseek-chat',
         'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'
     ];
-
     async getResponse(
         systemPrompt: string,
         history: AIMessage[] = [],
@@ -44,7 +38,6 @@ export class ProviderManager {
         }
         throw new Error('All AI providers failed to respond.');
     }
-
     private async callProvider(
         provider: string,
         systemPrompt: string,
@@ -62,7 +55,6 @@ export class ProviderManager {
             }
             return null;
         }
-
         const keys: { [key: string]: string | undefined } = {
             gemini: process.env.GEMINI_API_KEY,
             openai: process.env.OPENAI_API_KEY,
@@ -70,10 +62,8 @@ export class ProviderManager {
             groq: process.env.GROQ_API_KEY,
             mistral: process.env.MISTRAL_API_KEY
         };
-
         const key = keys[provider];
         if (!key) return null;
-
         try {
             switch (provider) {
                 case 'gemini': return await this.callGemini(key, systemPrompt, history, userMessage, visionContent);
@@ -87,7 +77,6 @@ export class ProviderManager {
             return null;
         }
     }
-
     private buildOpenAIMessages(
         systemPrompt: string,
         history: AIMessage[],
@@ -98,7 +87,6 @@ export class ProviderManager {
         for (const h of history) {
             messages.push({ role: h.role, content: h.content });
         }
-
         if (visionContent) {
             messages.push({
                 role: 'user',
@@ -110,10 +98,8 @@ export class ProviderManager {
         } else if (userMessage) {
             messages.push({ role: 'user', content: userMessage });
         }
-
         return messages;
     }
-
     private async callOpenRouter(
         modelId: string,
         systemPrompt: string,
@@ -123,9 +109,7 @@ export class ProviderManager {
     ): Promise<AIResponse | null> {
         const key = process.env.OPENROUTER_API_KEY;
         if (!key) return null;
-
         const messages = this.buildOpenAIMessages(systemPrompt, history, userMessage, visionContent);
-
         const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
             model: modelId,
             messages
@@ -138,11 +122,9 @@ export class ProviderManager {
             },
             timeout: 60000
         });
-
         const text = response.data?.choices?.[0]?.message?.content || null;
         return { text, model: `${modelId} (OpenRouter)` };
     }
-
     private async callGemini(
         key: string,
         systemPrompt: string,
@@ -153,17 +135,14 @@ export class ProviderManager {
         const { GoogleGenerativeAI } = require('@google/generative-ai');
         const genAI = new GoogleGenerativeAI(key);
         const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro-latest' });
-
         const chatHistory = history.map(h => ({
             role: h.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: h.content }]
         }));
-
         const chat = model.startChat({
             history: chatHistory,
             systemInstruction: systemPrompt
         });
-
         let content: any;
         if (visionContent) {
             const imageRes = await axios.get(visionContent.imageUrl, { responseType: 'arraybuffer' });
@@ -175,11 +154,9 @@ export class ProviderManager {
         } else {
             content = userMessage;
         }
-
         const result = await chat.sendMessage(content);
         return { text: result.response.text(), model: 'gemini-1.5-pro (Google)' };
     }
-
     private async callOpenAI(
         key: string,
         systemPrompt: string,
@@ -194,7 +171,6 @@ export class ProviderManager {
         }, { headers: { 'Authorization': `Bearer ${key}` }, timeout: 60000 });
         return { text: response.data.choices[0].message.content, model: 'gpt-4o (OpenAI)' };
     }
-
     private async callClaude(
         key: string,
         systemPrompt: string,
@@ -203,7 +179,6 @@ export class ProviderManager {
         visionContent?: VisionContent
     ): Promise<AIResponse> {
         const anthropicHistory = history.map(h => ({ role: h.role === 'system' ? 'user' : h.role, content: h.content }));
-
         let userContent: any = userMessage;
         if (visionContent) {
             const imageRes = await axios.get(visionContent.imageUrl, { responseType: 'arraybuffer' });
@@ -213,7 +188,6 @@ export class ProviderManager {
                 { type: 'text', text: userMessage || 'Describe this image.' }
             ];
         }
-
         const response = await axios.post('https://api.anthropic.com/v1/messages', {
             model: 'claude-3-5-sonnet-20241022',
             max_tokens: 2048,
@@ -225,7 +199,6 @@ export class ProviderManager {
         });
         return { text: response.data.content[0].text, model: 'claude-3-5-sonnet (Anthropic)' };
     }
-
     private async callGroq(
         key: string,
         systemPrompt: string,
@@ -239,7 +212,6 @@ export class ProviderManager {
         }, { headers: { 'Authorization': `Bearer ${key}` }, timeout: 60000 });
         return { text: response.data.choices[0].message.content, model: 'llama-3.3-70b (Groq)' };
     }
-
     private async callMistral(
         key: string,
         systemPrompt: string,

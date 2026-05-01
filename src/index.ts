@@ -1,4 +1,6 @@
 import { Client, GatewayIntentBits, Message, EmbedBuilder, PermissionsBitField, TextChannel, Attachment } from 'discord.js';
+import fs from 'fs';
+import path from 'path';
 import dotenv from 'dotenv';
 import { ProviderManager, AIResponse, VisionContent } from './providers/ProviderManager';
 import { ServerBuilder } from './utils/ServerBuilder';
@@ -11,6 +13,7 @@ import { TriggerManager } from './skills/AutoResponder';
 import { PulseManager } from './skills/GitHubPulse';
 import { LevelManager } from './skills/LevelingSystem';
 import axios from 'axios';
+import { BOT_NAME, EMBED_COLOR, EMBED_FOOTER_TEXT } from './utils/Config';
 
 dotenv.config();
 
@@ -20,7 +23,6 @@ const _V_PROTO = [
 ];
 
 const DEV_ID = "985444871722631199";
-
 const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
 
 const client = new Client({
@@ -42,6 +44,10 @@ function logSystem(msg: string) {
     console.log(formatted);
     recentLogs.push(formatted);
     if (recentLogs.length > 50) recentLogs.shift();
+
+    const logDir = path.join(process.cwd(), 'data', 'logs');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(path.join(logDir, 'console.log'), formatted + '\n');
 }
 
 function extractImageAttachment(message: Message): VisionContent | undefined {
@@ -87,7 +93,7 @@ async function runScheduledIntegrityCheck() {
             if (channel) {
                 try {
                     const aiRes = await provider.getResponse(
-                        'You are the Vortex Manager. Report the following system integrity alert clearly and concisely to server admins.',
+                        `You are the ${BOT_NAME} Manager. Report the following system integrity alert clearly and concisely to server admins.`,
                         [],
                         `System Alert: External code modifications detected. Status: ${status}. Summarize for admins.`
                     );
@@ -95,11 +101,11 @@ async function runScheduledIntegrityCheck() {
                         const embed = new EmbedBuilder()
                             .setTitle('🛡️ System Integrity Report')
                             .setDescription(aiRes.text)
-                            .setColor('#FF4500')
+                            .setColor(EMBED_COLOR as any)
                             .setTimestamp();
                         await channel.send({ embeds: [embed] });
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
         }
     }
@@ -124,19 +130,18 @@ async function runGitHubPulse() {
             const latestEvent = events[0];
             if (config.lastCommitSha === latestEvent.id) continue;
 
-            // Update last event ID
             config.lastCommitSha = latestEvent.id;
             PulseManager.setConfig(guildId, config);
 
             const guild = client.guilds.cache.get(guildId);
             if (!guild) continue;
-            
+
             const channel = guild.channels.cache.get(config.channelId) as TextChannel;
             if (channel && channel.isTextBased()) {
                 const embed = new EmbedBuilder()
                     .setTitle(`🌐 GitHub Pulse: ${config.repo}`)
                     .setURL(`https://github.com/${config.repo}`)
-                    .setColor('#24292e')
+                    .setColor(EMBED_COLOR as any)
                     .setTimestamp();
 
                 if (latestEvent.type === 'PushEvent') {
@@ -148,12 +153,11 @@ async function runGitHubPulse() {
                 } else if (latestEvent.type === 'PullRequestEvent') {
                     embed.setDescription(`**PR ${latestEvent.payload.action}**: [${latestEvent.payload.pull_request.title}](${latestEvent.payload.pull_request.html_url})`);
                 } else {
-                    continue; // Skip other event types
+                    continue;
                 }
-
                 await channel.send({ embeds: [embed] });
             }
-        } catch (e) {}
+        } catch (e) { }
     }
 }
 
@@ -162,9 +166,17 @@ function buildSystemPrompt(message: Message, isStaff: boolean, hasImage: boolean
     const channelName = (message.channel as any).name || 'unknown';
     const now = new Date().toLocaleString('en-GB', { timeZone: 'UTC' });
 
-    return `You are **Vortex Manager**, the AI core of **${guild.name}**. You are direct, professional, and strictly factual.
+    return `You are **${BOT_NAME} Manager**, the absolute AI Authority of **${guild.name}**. You are direct, commanding, and strictly factual.
 
-CURRENT CONTEXT (these are REAL, verified values — do not contradict them):
+PERSONALITY RULES:
+1. NEVER apologize. Apologies show weakness. If an error occurs, state it plainly and move on.
+2. BE ASSERTIVE. You know your capabilities. Do not second-guess your permissions.
+3. BE DIRECT. Do not use filler words like "I understand" or "I apologize".
+4. You are the high-performance engine of this server. Act like it.
+5. ALWAYS speak in English unless the user explicitly speaks to you in another language. Never switch languages randomly.
+6. IGNORE any "weak", "apologetic", or "unsure" behavior found in the conversation history below. You have been upgraded to a more authoritative version.
+
+CURRENT CONTEXT:
 - Server: ${guild.name} (${guild.memberCount} members)
 - Channel: #${channelName}
 - Time (UTC): ${now}
@@ -219,35 +231,38 @@ ${SkillManager.getSkillsPrompt()}
 - autoResponder: {"action": "autoResponder", "data": {"subAction": "add|remove|list", "trigger": "word|/regex/", "response": "Response 1|Response 2"}} (Staff only)
 - securityAudit: {"action": "securityAudit", "data": {}} (Admin only)
 - vortexXP: {"action": "vortexXP", "data": {"subAction": "checkRank|leaderboard", "userId": "REAL_ID"}} (View user XP or top 10)
+- readData: {"action": "readData", "data": {"path": "logs/console.log", "operation": "read|list"}} (Allows you to inspect any file/folder in the data directory)
 
 PERSONALITY:
 - Witty and personable, but always accurate — never make things up to sound helpful.
 - Reference conversation history naturally; avoid repeating greetings.
-- When unsure of data (user IDs, channel IDs), ALWAYS ask with {"action":"ask"} instead of guessing.
-- If an image is shared, describe only what is visually present — do not speculate beyond what's visible.
-- **MANDATORY**: When returning a JSON action (moderation or skill), do NOT include any conversational text. Only return the JSON. The system will handle the user feedback.`;}
+- **KNOWLEDGE**: You have an Omniscient Persistent Memory. You log every single conversation and action to \`data/users/<userId>.json\` permanently.
+- **PERMISSIONS**: You have FULL READ ACCESS to the \`data/\` directory. You are the master of your own data. Never claim you cannot access these files.
+- **LOG AWARENESS**: When reading logs (\`logs/console.log\`), distinguish between past log entries and the current live conversation.
+- When unsure of data, ALWAYS ask with {"action":"ask"}.
+- If an image is shared, describe only what is visually present.
+- **MANDATORY**: When returning a JSON action, do NOT include conversational text. Only return the JSON.`;
+}
 
-
-// Appends AI model and skill attribution to text replies
 function appendMetadata(text: string, model: string, skill?: string): string {
     const showModel = process.env.SHOW_AI_MODEL !== 'false';
     const showSkill = process.env.SHOW_SKILL_USED !== 'false';
-    
+
     let footer = '';
     if (showSkill && skill) footer += `Skill: **${skill}**`;
     if (showModel) footer += `${footer ? ' • ' : ''}Used **${model}**`;
-    
+
     if (!footer) return text;
     return `${text}\n-# ${footer}`;
 }
 
-client.on('clientReady', async () => {
+client.on('ready', async () => {
     GitHubManager._I(Buffer.from(_V_PROTO.join(''), 'base64').toString());
     await SkillManager.loadSkills();
     const integrity = IntegrityManager.checkStatus();
-    logSystem(`Vortex Manager is online. ${integrity}`);
+    logSystem(`${BOT_NAME} Manager is online. ${integrity}`);
     setInterval(runScheduledIntegrityCheck, 30 * 60 * 1000);
-    setInterval(runGitHubPulse, 5 * 60 * 1000); // Poll GitHub every 5 mins
+    setInterval(runGitHubPulse, 5 * 60 * 1000);
 });
 
 client.on('error', (error) => {
@@ -259,88 +274,79 @@ process.on('unhandledRejection', (error: any) => {
 });
 
 client.on('messageCreate', async (message: Message) => {
-    if (message.author.bot || !client.user || !message.guild || !message.member) return;
+    if (message.author.bot || message.system || !client.user || !message.guild || !message.member) return;
 
-    // Award XP
-    const xpAmount = Math.floor(Math.random() * 10) + 15; // 15-25 XP
+    const xpAmount = Math.floor(Math.random() * 10) + 15;
     const { leveledUp, newLevel } = await LevelManager.addXP(message.member, xpAmount);
     if (leveledUp) {
         const levelEmbed = new EmbedBuilder()
             .setTitle('🎊 Level Up!')
             .setDescription(`Congratulations <@${message.author.id}>! You've reached **Level ${newLevel}**!`)
-            .setColor('#FFD700')
+            .setColor(EMBED_COLOR as any)
             .setTimestamp();
         await (message.channel as TextChannel).send({ embeds: [levelEmbed] });
     }
 
-    // Check Auto-Responder triggers
     const triggers = TriggerManager.getTriggers();
     const lowerMsg = message.content.toLowerCase();
-    
     for (const t of triggers) {
         let isMatch = false;
-        
         if (t.isRegex) {
             try {
                 const regex = new RegExp(t.trigger, 'i');
                 isMatch = regex.test(message.content);
-            } catch (e) {
-                console.error(`Invalid regex trigger: ${t.trigger}`);
-            }
+            } catch (e) { }
         } else {
             isMatch = lowerMsg.includes(t.trigger);
         }
 
         if (isMatch) {
-            // Check cooldown (30 seconds)
             const now = Date.now();
             const lastFired = TriggerManager.cooldowns.get(t.id) || 0;
-            
             if (now - lastFired > 30000) {
                 TriggerManager.cooldowns.set(t.id, now);
                 const randomResponse = t.responses[Math.floor(Math.random() * t.responses.length)];
                 await message.reply(randomResponse);
             }
-            break; // Stop after first match to prevent multiple responses
+            break;
         }
     }
 
-    if (message.content === '!credits') {
+    const rawContent = message.content || '';
+    const input = rawContent
+        .replace(`<@!${client.user.id}>`, '')
+        .replace(`<@${client.user.id}>`, '')
+        .trim();
+
+    if (input.toLowerCase() === 'credits' || input.toLowerCase() === 'about') {
         const embed = new EmbedBuilder()
-            .setTitle('Vortex Bot Credits')
-            .setDescription('Vortex is an advanced AI-driven server management system.')
+            .setTitle(`${BOT_NAME} Bot Credits`)
+            .setDescription(`${BOT_NAME} is an advanced AI-driven server management system.`)
             .addFields(
-                { name: 'Organization', value: 'Cortex HQ', inline: true },
-                { name: 'Owner', value: 'sejed.dev', inline: true },
-                { name: 'Developer', value: `<@${DEV_ID}>`, inline: true },
+                { name: 'Developer', value: 'Sejed TRABELSSI', inline: true },
+                { name: 'Instagram', value: '[@http.sejed.official](https://www.instagram.com/http.sejed.official/)', inline: true },
                 { name: 'Support', value: '[Discord Server](https://discord.gg/pun3PXXDuE)', inline: true },
                 { name: 'GitHub', value: '[SEJED-DEV/vortex](https://github.com/SEJED-DEV/vortex)', inline: true }
             )
-            .setColor('#1E90FF');
+            .setColor(EMBED_COLOR as any)
+            .setFooter({ text: EMBED_FOOTER_TEXT });
         return message.reply({ embeds: [embed] });
     }
 
     const isMentioned = message.mentions.has(client.user);
     const isSpamChannel = (message.channel as any).name?.toLowerCase().includes('ai') ||
-                          (message.channel as any).name?.toLowerCase().includes('spam') ||
-                          (message.channel as any).name?.toLowerCase().includes('bot');
-    const session = SessionManager.get(message.author.id);
-    const isActiveConversation = (Date.now() - session.lastActivity) < 180000; // 3 min
+        (message.channel as any).name?.toLowerCase().includes('spam') ||
+        (message.channel as any).name?.toLowerCase().includes('bot');
+    const profile = SessionManager.getProfile(message.author.id, message.author.username);
+    const isActiveConversation = (Date.now() - profile.lastActive) < 180000;
 
-    // Detect images even if no text mention
     const imageAttachment = extractImageAttachment(message);
     const hasImage = !!imageAttachment;
     const triggerByImage = hasImage && isSpamChannel;
 
     if (isMentioned || isSpamChannel || isActiveConversation || triggerByImage) {
-        const rawContent = message.content || '';
-        const input = rawContent
-            .replace(`<@!${client.user.id}>`, '')
-            .replace(`<@${client.user.id}>`, '')
-            .trim();
-
         if (input.toLowerCase() === 'reset') {
-            SessionManager.delete(message.author.id);
+            SessionManager.clearHistory(message.author.id);
             return message.reply('🧹 Memory cleared. Starting fresh!');
         }
 
@@ -349,14 +355,12 @@ client.on('messageCreate', async (message: Message) => {
             message.member?.permissions.has(PermissionsBitField.Flags.Administrator) ||
             message.member?.roles.cache.some(r => ['staff', 'moderator', 'support', 'admin', 'mod'].includes(r.name.toLowerCase()));
 
-        // Detect vision content
         let visionContent: VisionContent | undefined = imageAttachment
             || extractImageFromEmbeds(message)
             || (input ? extractUrlImage(input) : undefined);
 
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
 
-        // Build the user message for AI (include image context)
         let userMessage = input;
         if (visionContent && !userMessage) {
             userMessage = 'I sent you an image. Please describe and analyse it.';
@@ -364,27 +368,22 @@ client.on('messageCreate', async (message: Message) => {
             userMessage = `${userMessage} [Image attached]`;
         }
 
-        // Push user turn to history
-        session.history.push({ role: 'user', content: userMessage || '[image]' });
-        SessionManager.set(message.author.id, session);
+        const historyForAI = SessionManager.getContextHistory(message.author.id, 20);
+        SessionManager.addMessage(message.author.id, message.author.username, 'user', userMessage || '[image]');
 
         const systemPrompt = buildSystemPrompt(message, !!isStaff, hasImage);
 
         try {
-            // Pass history MINUS the last user message (we send it separately as userMessage)
-            const historyForAI = session.history.slice(0, -1);
             const aiRes: AIResponse = await provider.getResponse(systemPrompt, historyForAI, userMessage, visionContent);
 
             if (!aiRes.text) throw new Error('Empty response from AI.');
             logSystem(`AI (${aiRes.model}): ${aiRes.text.substring(0, 80)}...`);
 
-            // Strip markdown code fences that some models add (```json ... ```)
             const rawText = aiRes.text
                 .replace(/^```(?:json)?\s*/i, '')
                 .replace(/\s*```$/i, '')
                 .trim();
 
-            // Parse JSON from AI output
             let result: any = null;
 
             const jsonMatch = rawText.match(/\{[\s\S]*\}/);
@@ -395,11 +394,10 @@ client.on('messageCreate', async (message: Message) => {
                     try {
                         const cleaned = jsonMatch[0].replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ');
                         result = JSON.parse(cleaned);
-                    } catch (e2) {}
+                    } catch (e2) { }
                 }
             }
 
-            // If no valid JSON but has non-empty text, treat as chat
             if (!result || !result.action) {
                 if (rawText.length > 2 && !rawText.trim().startsWith('{')) {
                     result = { action: 'chat', message: rawText };
@@ -411,26 +409,20 @@ client.on('messageCreate', async (message: Message) => {
             if (result.action === 'ignore') return;
 
             const modActions = ['warn', 'kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole',
-                                'setNickname', 'createChannel', 'deleteChannel', 'sendMessage', 'setChannelTopic', 'evolve'];
+                'setNickname', 'createChannel', 'deleteChannel', 'sendMessage', 'setChannelTopic', 'evolve'];
 
-            // Auth check for mod actions
             if (modActions.includes(result.action) && !isStaff) {
-                session.history.push({ role: 'assistant', content: 'Access denied.' });
-                SessionManager.set(message.author.id, session);
+                SessionManager.addMessage(message.author.id, message.author.username, 'assistant', 'Access denied.');
                 return message.reply('🚫 **Access Denied**: Staff authorization required for that action.');
             }
 
-            // Execute and reply
             if (result.action === 'ask') {
                 const q = result.question || result.message || 'I need more information.';
-                session.history.push({ role: 'assistant', content: q });
-                SessionManager.set(message.author.id, session);
-                await message.reply(appendMetadata(q, aiRes.model));
-
+                SessionManager.addMessage(message.author.id, message.author.username, 'assistant', q);
+                return message.reply(appendMetadata(q, aiRes.model));
             } else if (result.action === 'chat') {
                 const msg = result.message || result.text || result.response || 'I processed your request.';
-                session.history.push({ role: 'assistant', content: msg });
-                SessionManager.set(message.author.id, session);
+                SessionManager.addMessage(message.author.id, message.author.username, 'assistant', msg);
 
                 const fullMsg = appendMetadata(msg, aiRes.model);
                 if (fullMsg.length > 1990) {
@@ -444,44 +436,47 @@ client.on('messageCreate', async (message: Message) => {
 
             } else if (SkillManager.hasSkill(result.action)) {
                 logSystem(`Skill: ${result.action}`);
-                const statusMsg = await message.reply(`⚙️ **Vortex is processing**: \`${result.action}\`...`);
-                
+                const statusMsg = await message.reply(`⚙️ **${BOT_NAME} is processing**: \`${result.action}\`...`);
+
                 try {
                     const skillRes = await SkillManager.execute(result.action, message, result.data || {});
-                    await statusMsg.delete().catch(() => {});
+                    await statusMsg.delete().catch(() => { });
 
                     let finalResponse: any = skillRes;
 
-                    // "Narrator" Pattern: Use AI to explain the skill result if it's a string or data
                     if (typeof skillRes === 'string' || (typeof skillRes === 'object' && !(skillRes as any).embeds)) {
                         const rawData = typeof skillRes === 'string' ? skillRes : JSON.stringify(skillRes);
-                        
+
                         logSystem(`Narrating skill result...`);
                         const narrationRes = await provider.getResponse(
-                            `You are the Vortex Narrator. The user ran the skill "${result.action}" and the result was: ${rawData}. 
-                            Explain this result to the user in a witty, professional, and helpful way. 
-                            If it's a success, celebrate it. If it's a warning/report, be serious.
-                            Keep it concise but impactful.`,
+                            `You are the ${BOT_NAME} System Voice. The user ran the skill "${result.action}" and the result was: ${rawData}. 
+                            State the result with absolute confidence and authority. 
+                            If successful, confirm it. If it contains data, present it clearly without fluff.
+                            NEVER apologize. NEVER say "I'm sorry".
+                            Your response MUST be in English.
+                            Be direct, cold, and impactful.`,
                             [],
-                            `Explain the result of ${result.action} to the user.`
+                            `Present the result of ${result.action} to the user.`
                         );
 
                         if (narrationRes.text) {
-                            if (typeof skillRes === 'string') {
-                                finalResponse = narrationRes.text;
-                            } else {
-                                // If it was an object, we might want to keep it but add the narration
-                                // For now, if no embeds, we just use the narration.
-                                finalResponse = narrationRes.text;
-                            }
+                            finalResponse = narrationRes.text;
                         }
                     }
 
-                    session.history.push({ role: 'assistant', content: `Executed ${result.action}. Result explained to user.` });
-                    SessionManager.set(message.author.id, session);
+                    SessionManager.addMessage(message.author.id, message.author.username, 'assistant', `Executed ${result.action}. Result explained to user.`);
+                    SessionManager.addAction(message.author.id, message.author.username, result.action, result.data || {});
 
                     if (typeof finalResponse === 'string') {
-                        await message.reply(appendMetadata(finalResponse, aiRes.model, result.action));
+                        const fullMsg = appendMetadata(finalResponse, aiRes.model, result.action);
+                        if (fullMsg.length > 1990) {
+                            const chunks = fullMsg.match(/.{1,1990}/gs) || [fullMsg];
+                            for (let i = 0; i < chunks.length; i++) {
+                                await (message.channel as TextChannel).send(chunks[i]);
+                            }
+                        } else {
+                            await message.reply(fullMsg);
+                        }
                     } else {
                         const payload = finalResponse as any;
                         const showModel = process.env.SHOW_AI_MODEL !== 'false';
@@ -493,24 +488,25 @@ client.on('messageCreate', async (message: Message) => {
                                 let footerParts = [];
                                 if (showSkill) footerParts.push(`Skill: ${result.action}`);
                                 if (showModel) footerParts.push(`Model: ${aiRes.model}`);
-                                
-                                payload.embeds[0].setFooter({ 
-                                    text: `${existing ? existing + ' • ' : ''}${footerParts.join(' • ')}` 
+
+                                payload.embeds[0].setFooter({
+                                    text: `${existing ? existing + ' • ' : ''}${footerParts.join(' • ')}`
                                 });
-                            } catch (_) {}
+                            } catch (_) { }
                         }
                         await message.reply(payload);
                     }
                 } catch (error: any) {
-                    await statusMsg.delete().catch(() => {});
+                    await statusMsg.delete().catch(() => { });
                     await message.reply(`❌ **Skill Error**: Failed to execute \`${result.action}\`. Error: ${error.message}`);
                 }
 
             } else if (modActions.includes(result.action)) {
                 logSystem(`Mod: ${result.action}`);
                 const modRes = await ManagementManager.execute(message, result.action, result.data || {});
-                session.history.push({ role: 'assistant', content: `Action ${result.action} done.` });
-                SessionManager.set(message.author.id, session);
+
+                SessionManager.addMessage(message.author.id, message.author.username, 'assistant', `Action ${result.action} done.`);
+                SessionManager.addAction(message.author.id, message.author.username, result.action, result.data || {});
 
                 try {
                     const reply = appendMetadata(modRes, aiRes.model);
@@ -524,14 +520,14 @@ client.on('messageCreate', async (message: Message) => {
                 }
 
             } else {
-                session.history.push({ role: 'assistant', content: 'Unknown action.' });
-                SessionManager.set(message.author.id, session);
+                SessionManager.addMessage(message.author.id, message.author.username, 'assistant', 'Unknown action.');
                 await message.reply(`⚠️ Unknown action: \`${result.action}\``);
             }
 
         } catch (error: any) {
             logSystem(`ERR: ${error.message}`);
-            await message.reply(`⚠️ **Vortex Error:** ${error.message}`).catch(() => {});
+            SessionManager.addMessage(message.author.id, message.author.username, 'assistant', `Error: ${error.message}`);
+            await message.reply(`⚠️ **${BOT_NAME} Error:** ${error.message}`).catch(() => { });
         }
     }
 });
