@@ -224,7 +224,8 @@ PERSONALITY:
 - Witty and personable, but always accurate — never make things up to sound helpful.
 - Reference conversation history naturally; avoid repeating greetings.
 - When unsure of data (user IDs, channel IDs), ALWAYS ask with {"action":"ask"} instead of guessing.
-- If an image is shared, describe only what is visually present — do not speculate beyond what's visible.`;}
+- If an image is shared, describe only what is visually present — do not speculate beyond what's visible.
+- **MANDATORY**: When returning a JSON action (moderation or skill), do NOT include any conversational text. Only return the JSON. The system will handle the user feedback.`;}
 
 
 // Appends AI model attribution to text replies (disable with SHOW_AI_MODEL=false in .env)
@@ -414,25 +415,55 @@ client.on('messageCreate', async (message: Message) => {
                 logSystem(`Skill: ${result.action}`);
                 const statusMsg = await message.reply(`⚙️ **Vortex is processing**: \`${result.action}\`...`);
                 
-                const skillRes = await SkillManager.execute(result.action, message, result.data || {});
-                
-                await statusMsg.delete().catch(() => {});
+                try {
+                    const skillRes = await SkillManager.execute(result.action, message, result.data || {});
+                    await statusMsg.delete().catch(() => {});
 
-                session.history.push({ role: 'assistant', content: `Skill ${result.action} executed.` });
-                SessionManager.set(message.author.id, session);
+                    let finalResponse: any = skillRes;
 
-                if (typeof skillRes === 'string') {
-                    await message.reply(appendModel(skillRes, aiRes.model));
-                } else {
-                    // Embed response — append model to footer if enabled
-                    const payload = skillRes as any;
-                    if (process.env.SHOW_AI_MODEL !== 'false' && Array.isArray(payload?.embeds) && payload.embeds[0]) {
-                        try {
-                            const existing = payload.embeds[0].data?.footer?.text || '';
-                            payload.embeds[0].setFooter({ text: `${existing ? existing + ' • ' : ''}Model: ${aiRes.model}` });
-                        } catch (_) {}
+                    // "Narrator" Pattern: Use AI to explain the skill result if it's a string or data
+                    if (typeof skillRes === 'string' || (typeof skillRes === 'object' && !skillRes.embeds)) {
+                        const rawData = typeof skillRes === 'string' ? skillRes : JSON.stringify(skillRes);
+                        
+                        logSystem(`Narrating skill result...`);
+                        const narrationRes = await provider.getResponse(
+                            `You are the Vortex Narrator. The user ran the skill "${result.action}" and the result was: ${rawData}. 
+                            Explain this result to the user in a witty, professional, and helpful way. 
+                            If it's a success, celebrate it. If it's a warning/report, be serious.
+                            Keep it concise but impactful.`,
+                            [],
+                            `Explain the result of ${result.action} to the user.`
+                        );
+
+                        if (narrationRes.text) {
+                            if (typeof skillRes === 'string') {
+                                finalResponse = narrationRes.text;
+                            } else {
+                                // If it was an object, we might want to keep it but add the narration
+                                // For now, if no embeds, we just use the narration.
+                                finalResponse = narrationRes.text;
+                            }
+                        }
                     }
-                    await message.reply(payload);
+
+                    session.history.push({ role: 'assistant', content: `Executed ${result.action}. Result explained to user.` });
+                    SessionManager.set(message.author.id, session);
+
+                    if (typeof finalResponse === 'string') {
+                        await message.reply(appendModel(finalResponse, aiRes.model));
+                    } else {
+                        const payload = finalResponse as any;
+                        if (process.env.SHOW_AI_MODEL !== 'false' && Array.isArray(payload?.embeds) && payload.embeds[0]) {
+                            try {
+                                const existing = payload.embeds[0].data?.footer?.text || '';
+                                payload.embeds[0].setFooter({ text: `${existing ? existing + ' • ' : ''}Model: ${aiRes.model}` });
+                            } catch (_) {}
+                        }
+                        await message.reply(payload);
+                    }
+                } catch (error: any) {
+                    await statusMsg.delete().catch(() => {});
+                    await message.reply(`❌ **Skill Error**: Failed to execute \`${result.action}\`. Error: ${error.message}`);
                 }
 
             } else if (modActions.includes(result.action)) {
