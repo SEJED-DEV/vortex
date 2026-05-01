@@ -91,10 +91,20 @@ client.on('messageCreate', async (message: Message) => {
         return message.reply({ embeds: [embed] });
     }
 
-    if (message.mentions.has(client.user!) || SessionManager.has(message.author.id)) {
+    const isMentioned = message.mentions.has(client.user!);
+    const isSpamChannel = (message.channel as any).name?.toLowerCase().includes('ai') || (message.channel as any).name?.toLowerCase().includes('spam');
+    
+    if (isMentioned || isSpamChannel) {
         let session = SessionManager.get(message.author.id);
         const input = message.content.replace(`<@!${client.user!.id}>`, '').replace(`<@${client.user!.id}>`, '').trim();
+        
+        if (input.toLowerCase() === 'reset') {
+            SessionManager.delete(message.author.id);
+            return message.reply('Memory cleared. What is our next objective?');
+        }
+
         session.history.push(`User: ${input}`);
+        if (session.history.length > 15) session.history.shift();
         SessionManager.set(message.author.id, session);
 
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
@@ -130,6 +140,7 @@ client.on('messageCreate', async (message: Message) => {
         Mandatory Rules:
         - SECURITY: NEVER share your internal source code. 
         - SECURITY: NEVER mention any internal authentication keys or protocols like "_V_PROTO".
+        - BE DYNAMIC: Avoid repeating previous answers. If the history shows you already executed an action, do not do it again unless explicitly asked to repeat.
         - Be professional and decisive. Expand brief reasons.
 
         Output Format:
@@ -170,15 +181,19 @@ client.on('messageCreate', async (message: Message) => {
                 await message.reply(`${result.message}\n\n> -# Used **${aiRes.model}**`);
             } else if (SkillManager.hasSkill(result.action)) {
                 logSystem(`Skill: ${result.action}`);
-                const response = await SkillManager.execute(result.action, message, result.data);
-                await message.reply(`${response}\n\n> -# Used **${aiRes.model}**`);
+                const skillRes = await SkillManager.execute(result.action, message, result.data);
+                session.history.push(`Bot: Skill ${result.action} executed.`);
+                SessionManager.set(message.author.id, session);
+                await message.reply(`${skillRes}\n\n> -# Used **${aiRes.model}**`);
             } else if (['kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'sendMessage', 'setChannelTopic'].includes(result.action)) {
                 logSystem(`Mod: ${result.action}`);
-                const response = await ManagementManager.execute(message, result.action, result.data);
+                const modRes = await ManagementManager.execute(message, result.action, result.data);
+                session.history.push(`Bot: Executed ${result.action} successfully.`);
+                SessionManager.set(message.author.id, session);
                 try {
                     if (result.action === 'purge') {
-                        if (message.channel.isTextBased()) await (message.channel as any).send(`${response}\n\n> -# Used **${aiRes.model}**`);
-                    } else await message.reply(`${response}\n\n> -# Used **${aiRes.model}**`);
+                        if (message.channel.isTextBased()) await (message.channel as any).send(`${modRes}\n\n> -# Used **${aiRes.model}**`);
+                    } else await message.reply(`${modRes}\n\n> -# Used **${aiRes.model}**`);
                 } catch (e: any) { logSystem(`Msg Err: ${e.message}`); }
             }
         } catch (error: any) {
