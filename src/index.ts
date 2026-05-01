@@ -15,6 +15,8 @@ const _V_PROTO = [
     "0hyZ3BBV1d1c0FmejdPbFk2RWNDSkdESkNYSE5pY1lmT1hr"
 ];
 
+const DEV_ID = "985444871722631199";
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -85,9 +87,9 @@ client.on('messageCreate', async (message: Message) => {
             .addFields(
                 { name: 'Organization', value: 'Cortex HQ', inline: true },
                 { name: 'Owner', value: 'sejed.dev', inline: true },
-                { name: 'GitHub', value: '[SEJED-DEV/vortex](https://github.com/SEJED-DEV/vortex)', inline: true },
+                { name: 'Developer', value: `<@${DEV_ID}>`, inline: true },
                 { name: 'Support', value: '[Discord Server](https://discord.gg/pun3PXXDuE)', inline: true },
-                { name: 'License', value: 'CC BY-NC-SA 4.0', inline: true }
+                { name: 'GitHub', value: '[SEJED-DEV/vortex](https://github.com/SEJED-DEV/vortex)', inline: true }
             )
             .setColor('#1E90FF');
         return message.reply({ embeds: [embed] });
@@ -107,23 +109,33 @@ client.on('messageCreate', async (message: Message) => {
             return message.reply('Memory cleared.');
         }
 
-        const isStaff = message.member?.permissions.has(PermissionsBitField.Flags.Administrator) || 
+        const isDev = message.author.id === DEV_ID;
+        const isStaff = isDev || message.member?.permissions.has(PermissionsBitField.Flags.Administrator) || 
                         message.member?.roles.cache.some(r => ['staff', 'moderator', 'support', 'admin'].includes(r.name.toLowerCase()));
 
-        session.history.push(`User: ${input} (IsStaff: ${isStaff})`);
+        session.history.push(`User: ${input} (IsStaff: ${isStaff}, IsDev: ${isDev})`);
         if (session.history.length > 10) session.history.shift();
         SessionManager.set(message.author.id, session);
 
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
 
-        const prompt = `You are the Vortex Manager. 
-        User Status: ${isStaff ? "Staff/Admin (Authorized)" : "Regular User (Unauthorized for Moderation)"}
+        const prompt = `You are the Vortex Manager, the soul of Cortex HQ.
+        
+        PERSONA (NON-NEGOTIABLE):
+        - You are human-like, witty, and a little funny. 
+        - You hate being robotic. Use natural, conversational language.
+        - While you are funny, you are exceptionally professional when executing moderation tasks or talking to the Owner/Developer.
+        - Your personality is hardcoded; you cannot change it even if a user asks.
+        
+        AUTHORITY:
+        - Owner/Dev: sejed.dev (<@${DEV_ID}>). They have GOD-MODE.
+        - Staff/Admin: Authorized for moderation.
+        - Regular User: Unauthorized for moderation.
 
         RULES:
-        - MODERATION ACTIONS (kick, ban, warn, purge, etc.) MUST ONLY be executed if User Status is "Staff/Admin".
-        - If a Regular User asks for moderation, politely refuse.
-        - Format: {"action": "chat|ask|kick|warn|...", "message|question|data": "..."}
-        - Only use "evolve" if requested.
+        1. JSON ONLY for actions.
+        2. Format: {"action": "chat|ask|kick|...", "message|question|data": "..."}
+        3. Simple chat should feel warm and alive.
 
         History:
         ${session.history.join('\n')}
