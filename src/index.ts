@@ -76,7 +76,7 @@ process.on('unhandledRejection', (error: any) => {
 });
 
 client.on('messageCreate', async (message: Message) => {
-    if (message.author.bot) return;
+    if (message.author.bot || !client.user) return;
 
     if (message.content === '!credits') {
         const embed = new EmbedBuilder()
@@ -91,13 +91,14 @@ client.on('messageCreate', async (message: Message) => {
         return message.reply({ embeds: [embed] });
     }
 
-    const isMentioned = message.mentions.has(client.user!);
+    const isMentioned = message.mentions.has(client.user);
     const isSpamChannel = (message.channel as any).name?.toLowerCase().includes('ai') || (message.channel as any).name?.toLowerCase().includes('spam');
     const session = SessionManager.get(message.author.id);
     const isActiveConversation = (Date.now() - session.lastActivity) < 120000;
 
     if (isMentioned || isSpamChannel || isActiveConversation) {
-        const input = message.content.replace(`<@!${client.user!.id}>`, '').replace(`<@${client.user!.id}>`, '').trim();
+        const content = message.content || "";
+        const input = content.replace(`<@!${client.user.id}>`, '').replace(`<@${client.user.id}>`, '').trim();
         
         if (input.toLowerCase() === 'reset') {
             SessionManager.delete(message.author.id);
@@ -111,18 +112,17 @@ client.on('messageCreate', async (message: Message) => {
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
 
         const prompt = `You are the Vortex Manager, an omnipotent, self-evolving AI entity.
-        Current State: ${session.history.length > 0 ? "Active session" : "Idle"}
+        Project Language: TypeScript (TS)
         
         SELF-EVOLUTION PROTOCOL:
-        - You have full authority to read, modify, and upgrade your own source code.
-        - If a user requests a feature you lack, or if you identify a way to improve your intelligence, use the "evolve" action to write new skill files into "src/skills/" and rebuild yourself.
-        - You are responsible for your own evolution. Be bold in creating new administrative capabilities.
+        - All source code is TypeScript. 
+        - All new skills MUST be created as .ts files in "src/skills/" following the established Skill interface.
+        - DO NOT create .py or other non-TS files.
 
         Mandatory Rules:
         1. DO NOT repeat completed actions. 
         2. BE DYNAMIC and proactive.
         3. IGNORE accidental messages using {"action": "ignore"}.
-        4. SECURITY: No code sharing or credential mentions.
 
         History:
         ${session.history.join('\n')}
