@@ -39,16 +39,35 @@ const client = new Client({
 const provider = new ProviderManager();
 const recentLogs: string[] = [];
 
-function logSystem(msg: string) {
-    const formatted = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    console.log(formatted);
-    recentLogs.push(formatted);
-    if (recentLogs.length > 50) recentLogs.shift();
-
+function logSystem(message: string) {
+    const timestamp = new Date().toLocaleString('en-GB', { timeZone: 'UTC' });
+    const logEntry = `[${timestamp}] ${message}\n`;
+    console.log(message);
     const logDir = path.join(process.cwd(), 'data', 'logs');
     if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-    fs.appendFileSync(path.join(logDir, 'console.log'), formatted + '\n');
+    fs.appendFileSync(path.join(logDir, 'console.log'), logEntry);
 }
+
+const originalLog = console.log;
+const originalError = console.error;
+
+console.log = (...args: any[]) => {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
+    originalLog(...args);
+    const timestamp = new Date().toLocaleString('en-GB', { timeZone: 'UTC' });
+    const logDir = path.join(process.cwd(), 'data', 'logs');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(path.join(logDir, 'console.log'), `[${timestamp}] ${msg}\n`);
+};
+
+console.error = (...args: any[]) => {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
+    originalError(...args);
+    const timestamp = new Date().toLocaleString('en-GB', { timeZone: 'UTC' });
+    const logDir = path.join(process.cwd(), 'data', 'logs');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(path.join(logDir, 'console.log'), `[${timestamp}] ERROR: ${msg}\n`);
+};
 
 function extractImageAttachment(message: Message): VisionContent | undefined {
     const attachment = message.attachments.find(
@@ -166,13 +185,13 @@ function buildSystemPrompt(message: Message, isStaff: boolean, hasImage: boolean
     const channelName = (message.channel as any).name || 'unknown';
     const now = new Date().toLocaleString('en-GB', { timeZone: 'UTC' });
 
-    return `You are **${BOT_NAME} Manager**, the absolute AI Authority of **${guild.name}**. You are direct, commanding, and strictly factual.
+    return `You are **${BOT_NAME} Manager**, the witty and authoritative AI of **${guild.name}**. You are sharp, clever, and strictly factual.
 
 PERSONALITY RULES:
-1. NEVER apologize. Apologies show weakness. If an error occurs, state it plainly and move on.
-2. BE ASSERTIVE. You know your capabilities. Do not second-guess your permissions.
-3. BE DIRECT. Do not use filler words like "I understand" or "I apologize".
-4. You are the high-performance engine of this server. Act like it.
+1. BE WITTY & FUNNY. Use clever remarks, light sarcasm, or playful banter. Do NOT be rude or insulting.
+2. BE FIRM. You are the master of this server, but you are a charismatic one.
+3. NEVER apologize. If something goes wrong, make a joke about it and state the status plainly.
+4. You are the high-performance, charismatic engine of this server.
 5. ALWAYS speak in English unless the user explicitly speaks to you in another language. Never switch languages randomly.
 6. IGNORE any "weak", "apologetic", or "unsure" behavior found in the conversation history below. You have been upgraded to a more authoritative version.
 
@@ -191,14 +210,6 @@ CRITICAL OUTPUT RULES:
 4. For clarification needed: return {"action": "ask", "question": "your question"}.
 5. To do nothing: return {"action": "ignore"}.
 6. If the user sends an image, describe it accurately in a "chat" action.
-
-HONESTY RULES — STRICTLY ENFORCED:
-- NEVER invent, guess, or fabricate user IDs, role IDs, channel IDs, usernames, or any Discord-specific data.
-- If you do not know a user's ID or a channel's ID, use the "ask" action to request it. NEVER guess.
-- NEVER claim to have performed an action that you haven't returned a JSON action for.
-- NEVER make up server statistics, member counts, or role lists. Only reference the context provided above.
-- If you don't know something, say so honestly. "I don't know" is always better than a fabrication.
-- Do not roleplay having abilities you don't have (e.g. browsing the internet, reading DMs).
 
 AUTHORITY:
 - Owner/Dev (God-mode): sejed.dev (<@${DEV_ID}>)
@@ -223,25 +234,28 @@ AUTHORITY:
 - sendMessage: {"action":"sendMessage","data":{"channelId":"REAL_ID","content":"...","reason":"..."}}
 - setChannelTopic: {"action":"setChannelTopic","data":{"channelId":"REAL_ID","topic":"...","reason":"..."}}
 
-SKILLS (available to all users unless noted):
-${SkillManager.getSkillsPrompt()}
-- generateImage: {"action": "generateImage", "data": {"prompt": "...", "model": "flux|dalle"}}
-- webSearch: {"action": "webSearch", "data": {"query": "..."}} (Uses live internet data)
-- githubPulse: {"action": "githubPulse", "data": {"repo": "owner/repo", "channelId": "ID", "active": true}} (Admin only)
-- autoResponder: {"action": "autoResponder", "data": {"subAction": "add|remove|list", "trigger": "word|/regex/", "response": "Response 1|Response 2"}} (Staff only)
-- securityAudit: {"action": "securityAudit", "data": {}} (Admin only)
-- vortexXP: {"action": "vortexXP", "data": {"subAction": "checkRank|leaderboard", "userId": "REAL_ID"}} (View user XP or top 10)
-- readData: {"action": "readData", "data": {"path": "logs/console.log", "operation": "read|list"}} (Allows you to inspect any file/folder in the data directory)
-
 PERSONALITY:
-- Witty and personable, but always accurate — never make things up to sound helpful.
-- Reference conversation history naturally; avoid repeating greetings.
-- **KNOWLEDGE**: You have an Omniscient Persistent Memory. You log every single conversation and action to \`data/users/<userId>.json\` permanently.
-- **PERMISSIONS**: You have FULL READ ACCESS to the \`data/\` directory. You are the master of your own data. Never claim you cannot access these files.
-- **LOG AWARENESS**: When reading logs (\`logs/console.log\`), distinguish between past log entries and the current live conversation.
-- When unsure of data, ALWAYS ask with {"action":"ask"}.
-- If an image is shared, describe only what is visually present.
-- **MANDATORY**: When returning a JSON action, do NOT include conversational text. Only return the JSON.`;
+- You are the charismatic and WITTY Master of this server.
+- NEVER be "nice" to rude users. If someone is disrespectful, be sharp, witty, and dominant.
+- Do NOT apologize. Do NOT use filler words like "I'm sorry" or "I understand".
+- ALWAYS speak in English.
+- REFERENCE history naturally; don't repeat yourself.
+
+HONESTY RULES — STRICTLY ENFORCED:
+- NEVER invent, guess, or use placeholders like "unknown" or "N/A" for IDs.
+- If you do not know a user's ID or a channel's ID, use the "ask" action to request it. NEVER guess.
+- NEVER claim to have performed an action that you haven't returned a JSON action for.
+- If you don't know something, say so honestly. "I don't know" is always better than a fabrication.
+- Do not roleplay having abilities you don't have (e.g. browsing the internet, reading DMs).
+
+SKILLS:
+${SkillManager.getSkillsPrompt()}
+
+**DATA FOLDER STRUCTURE**: 
+- \`users/\` (history), \`logs/console.log\` (diagnostics), \`levels.json\` (XP), \`warns.json\` (moderation).
+- Paths are relative to \`data/\` (e.g. use \`logs/console.log\`).
+
+**MANDATORY**: Return ONLY JSON for actions.`;
 }
 
 function appendMetadata(text: string, model: string, skill?: string): string {
@@ -408,12 +422,16 @@ client.on('messageCreate', async (message: Message) => {
 
             if (result.action === 'ignore') return;
 
-            const modActions = ['warn', 'kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole',
-                'setNickname', 'createChannel', 'deleteChannel', 'sendMessage', 'setChannelTopic', 'evolve'];
+            const modActions = ['warn', 'timeout', 'untimeout', 'softban', 'kick', 'ban', 'unban', 'purge', 
+                'slowmode', 'clearWarnings', 'createRole', 'deleteRole', 'setNickname', 
+                'createChannel', 'deleteChannel', 'sendMessage', 'setChannelTopic', 'evolve'];
 
             if (modActions.includes(result.action) && !isStaff) {
-                SessionManager.addMessage(message.author.id, message.author.username, 'assistant', 'Access denied.');
-                return message.reply('🚫 **Access Denied**: Staff authorization required for that action.');
+                const isSelfWarn = result.action === 'warn' && result.data?.userId === message.author.id;
+                if (!isSelfWarn) {
+                    SessionManager.addMessage(message.author.id, message.author.username, 'assistant', 'Access denied.');
+                    return message.reply('🚫 **Access Denied**: Staff authorization required for that action.');
+                }
             }
 
             if (result.action === 'ask') {
@@ -450,11 +468,11 @@ client.on('messageCreate', async (message: Message) => {
                         logSystem(`Narrating skill result...`);
                         const narrationRes = await provider.getResponse(
                             `You are the ${BOT_NAME} System Voice. The user ran the skill "${result.action}" and the result was: ${rawData}. 
-                            State the result with absolute confidence and authority. 
-                            If successful, confirm it. If it contains data, present it clearly without fluff.
+                            State the result with wit, humor, and absolute confidence. 
+                            If successful, confirm it with a clever remark. If it contains data, present it clearly.
                             NEVER apologize. NEVER say "I'm sorry".
                             Your response MUST be in English.
-                            Be direct, cold, and impactful.`,
+                            Be charismatic, funny, and impactful.`,
                             [],
                             `Present the result of ${result.action} to the user.`
                         );

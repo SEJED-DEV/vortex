@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 dotenv.config();
 export interface AIMessage {
@@ -14,16 +15,29 @@ export interface VisionContent {
     mimeType: string;
 }
 export class ProviderManager {
-    private providers = ['gemini', 'openrouter', 'openai', 'claude', 'groq', 'mistral'];
+    private providers = ['groq', 'openrouter', 'openai', 'claude', 'mistral', 'gemini'];
     private openRouterModels = [
-        'anthropic/claude-3.5-sonnet',
-        'openai/gpt-4o',
-        'google/gemini-2.0-flash-001',
-        'meta-llama/llama-3.3-70b-instruct',
-        'mistralai/mistral-large-2407',
-        'deepseek/deepseek-chat',
-        'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'
-    ];
+            'anthropic/claude-3.5-sonnet',
+            'openai/gpt-4o',
+            'openai/gpt-oss-20b',
+            'google/gemini-2.0-flash-001',
+            'meta-llama/llama-3.3-70b-instruct',
+            'mistralai/mistral-large-2407',
+            'deepseek/deepseek-chat',
+            'nvidia/llama-3.1-nemotron-ultra-253b-v1:free',
+            'x-ai/grok-4.1-fast:free',
+            'cognitivecomputations/dolphin-mixtral-8x7b',
+            'google/gemini-2.0-pro-exp-02-05:free',
+            'google/learnlm-1.5-pro-experimental:free',
+            'meta-llama/llama-3.3-70b-instruct:free',
+            'deepseek/deepseek-r1:free',
+            'sophosympathizer/rogue-rose-103b-v0.2:free',
+            'mistralai/pixtral-12b:free',
+            'gryphe/mythomax-l2-13b:free',
+            'microsoft/phi-3-medium-128k-instruct:free',
+            'qwen/qwen-2.5-72b-instruct:free',
+            'openchat/openchat-7b:free'
+        ];
     async getResponse(
         systemPrompt: string,
         history: AIMessage[] = [],
@@ -34,7 +48,9 @@ export class ProviderManager {
             try {
                 const response = await this.callProvider(provider, systemPrompt, history, userMessage, visionContent);
                 if (response && response.text) return response;
-            } catch (error) {}
+            } catch (error: any) {
+                console.error(`[Provider Error] ${provider}: ${error.message}`);
+            }
         }
         throw new Error('All AI providers failed to respond.');
     }
@@ -50,6 +66,7 @@ export class ProviderManager {
                 try {
                     return await this.callOpenRouter(modelId, systemPrompt, history, userMessage, visionContent);
                 } catch (error: any) {
+                    console.error(`[OpenRouter Error] ${modelId}: ${error.message}`);
                     continue;
                 }
             }
@@ -63,7 +80,13 @@ export class ProviderManager {
             mistral: process.env.MISTRAL_API_KEY
         };
         const key = keys[provider];
-        if (!key) return null;
+        if (!key) {
+            if (provider === 'gemini' || provider === 'groq') {
+                console.warn(`[Config Warning] ${provider.toUpperCase()}_API_KEY is missing in .env! Skipping free-tier provider.`);
+            }
+            return null;
+        }
+        console.log(`[Provider Attempt] Trying ${provider}...`);
         try {
             switch (provider) {
                 case 'gemini': return await this.callGemini(key, systemPrompt, history, userMessage, visionContent);
@@ -73,7 +96,8 @@ export class ProviderManager {
                 case 'mistral': return await this.callMistral(key, systemPrompt, history, userMessage);
                 default: return null;
             }
-        } catch (error) {
+        } catch (error: any) {
+            console.error(`[Provider Error] ${provider}: ${error.message}`);
             return null;
         }
     }
@@ -132,16 +156,17 @@ export class ProviderManager {
         userMessage: string,
         visionContent?: VisionContent
     ): Promise<AIResponse> {
-        const { GoogleGenerativeAI } = require('@google/generative-ai');
         const genAI = new GoogleGenerativeAI(key);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro-latest' });
+        const model = genAI.getGenerativeModel({ 
+            model: 'gemini-1.5-flash',
+            systemInstruction: systemPrompt
+        });
         const chatHistory = history.map(h => ({
             role: h.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: h.content }]
         }));
         const chat = model.startChat({
-            history: chatHistory,
-            systemInstruction: systemPrompt
+            history: chatHistory
         });
         let content: any;
         if (visionContent) {

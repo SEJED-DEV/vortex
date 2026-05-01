@@ -13,14 +13,15 @@ Vortex is configured to use industry-leading free APIs, bypassing expensive toke
 
 ### 📚 Omniscient Logging & Memory
 Vortex literally *never forgets*. 
-- **Persistent User Profiles**: Every interaction, chat, and command is permanently logged to `data/users/<userId>.json`.
-- **System Console**: Every system action and AI thought process is recorded in `data/logs/console.log`.
-- Vortex dynamically loads your chat history into its context, providing true memory across restarts.
+- **Console-to-File Hook**: Every single terminal output, diagnostic error, and AI thought process is automatically mirrored to `data/logs/console.log` in real-time.
+- **Persistent User Profiles**: Every interaction is permanently logged to `data/users/<userId>.json`.
+- **Premium Visual Audit**: System logs in `ai-actions-logs` feature a "Sapphire-grade" UI with dynamic coloring and rich metadata.
 
 ### 🛡️ Advanced Moderation & Security
 Professional-grade tools for community safety.
+- **Autonomous Self-Moderation**: Vortex is authorized to enforce its own authority. If a user is disrespectful, the engine can autonomously issue warnings and timeouts.
 - **Security Auditor**: Scans roles for dangerous permissions, detects exposed webhooks, and checks MFA levels.
-- **Native Timeouts & Warnings**: AI-driven muting and warning system.
+- **Native Timeouts & Warnings**: AI-driven muting and warning system with automatic DM notifications to targets.
 - **Softbans & Purges**: Instantly clear chat history while removing bad actors.
 
 ### 🧩 Available Skills (Commands)

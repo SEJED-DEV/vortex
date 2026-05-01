@@ -1,5 +1,6 @@
-import { Guild, TextChannel, Message, EmbedBuilder, ChannelType } from 'discord.js';
+import { Guild, TextChannel, Message, EmbedBuilder, ChannelType, User, GuildMember } from 'discord.js';
 import { WarnManager } from './WarnManager';
+import { BOT_NAME } from './Config';
 export class ManagementManager {
     private static LOG_CHANNEL_NAME = 'ai-actions-logs';
     private static async getLogChannel(guild: Guild): Promise<TextChannel> {
@@ -21,15 +22,29 @@ export class ManagementManager {
     public static async logAction(guild: Guild, action: string, target: string, reason: string, performer: string) {
         try {
             const logChannel = await this.getLogChannel(guild);
+            
+            let color = '#7289DA';
+            let icon = 'ℹ️';
+            
+            if (action.includes('BAN')) { color = '#FF004D'; icon = '🔨'; }
+            else if (action.includes('KICK')) { color = '#FF4500'; icon = '👢'; }
+            else if (action.includes('WARN')) { color = '#FFA500'; icon = '⚠️'; }
+            else if (action.includes('TIMEOUT')) { color = '#FFD700'; icon = '🔇'; }
+            else if (action.includes('CREATE')) { color = '#00FF7F'; icon = '➕'; }
+            else if (action.includes('DELETE')) { color = '#DC143C'; icon = '➖'; }
+
             const embed = new EmbedBuilder()
-                .setTitle(`AI Action: ${action}`)
-                .setColor(action.includes('BAN') || action.includes('KICK') ? '#FF0000' : '#FFA500')
+                .setTitle(`${icon} System Log: ${action.replace('_', ' ')}`)
+                .setColor(color as any)
+                .setDescription(`The **${BOT_NAME} Engine** has recorded a new management event.`)
                 .addFields(
-                    { name: 'Target', value: target || 'N/A', inline: true },
-                    { name: 'Reason', value: reason || 'No reason provided.', inline: true },
-                    { name: 'Performer', value: performer || 'Unknown', inline: true }
+                    { name: '👤 Target', value: `\`${target}\``, inline: true },
+                    { name: '🛠️ Performer', value: `\`${performer}\``, inline: true },
+                    { name: '📝 Reason', value: `*${reason || 'No reason provided.'}*`, inline: false }
                 )
+                .setFooter({ text: `Engine ID: ${guild.id} | ${BOT_NAME} V1.5`, iconURL: guild.client.user?.displayAvatarURL() })
                 .setTimestamp();
+            
             await logChannel.send({ embeds: [embed] });
         } catch (e) {}
     }
@@ -38,6 +53,22 @@ export class ManagementManager {
         const cleaned = query.replace('#', '').trim();
         return guild.channels.cache.get(cleaned) ||
                guild.channels.cache.find(c => c.name === cleaned);
+    }
+    private static async notifyUser(target: GuildMember | User, action: string, reason: string, guild: Guild) {
+        try {
+            const embed = new EmbedBuilder()
+                .setAuthor({ name: `${BOT_NAME} Security System`, iconURL: guild.client.user?.displayAvatarURL() })
+                .setTitle(`🚨 Moderation Notice`)
+                .setDescription(`This is an automated notification regarding an action taken on your account in **${guild.name}**.`)
+                .setColor('#FF004D')
+                .addFields(
+                    { name: '📌 Action Taken', value: `\`${action.toUpperCase()}\``, inline: true },
+                    { name: '⚖️ Reason', value: reason, inline: true }
+                )
+                .setFooter({ text: 'If you believe this was an error, please contact server administrators.' })
+                .setTimestamp();
+            await target.send({ embeds: [embed] }).catch(() => {});
+        } catch (e) {}
     }
     static async execute(message: Message, action: string, data: any): Promise<string> {
         const guild = message.guild!;
@@ -53,9 +84,11 @@ export class ManagementManager {
                 if (!member) return `Failed to warn: User ${userId} not found.`;
                 const count = await WarnManager.addWarning(member.id, message.author.id, reason);
                 await this.logAction(guild, 'WARN', member.user.tag, reason, message.author.tag);
+                await this.notifyUser(member, 'Warning', reason, guild);
                 let extra = '';
                 if (count >= 3) {
                     await member.timeout(1000 * 60 * 60, 'Auto-timeout for reaching 3 warnings').catch(() => {});
+                    await this.notifyUser(member, 'Automatic Timeout (3 warnings)', 'Reached warning threshold.', guild);
                     extra = `\n🚨 **Threshold reached**: User has been automatically timed out for 1 hour.`;
                 }
                 return `⚠️ **User Warned**: ${member.toString()} has been officially warned (**${count}/3**). Reason: *${reason}*${extra}`;
@@ -66,6 +99,7 @@ export class ManagementManager {
                 if (!userId) return `Failed to timeout: No user ID provided.`;
                 const member = await guild.members.fetch(userId).catch(() => null);
                 if (!member) return `Failed to timeout: User ${userId} not found.`;
+                await this.notifyUser(member, `Timeout (${duration}m)`, reason, guild);
                 await member.timeout(duration * 60 * 1000, reason);
                 await this.logAction(guild, 'TIMEOUT', member.user.tag, `${duration}m: ${reason}`, message.author.tag);
                 return `🔇 **Timed out** **${member.user.tag}** for **${duration} minutes**. Reason: *${reason}*`;
@@ -85,6 +119,7 @@ export class ManagementManager {
                 const member = await guild.members.fetch(userId).catch(() => null);
                 if (!member) return `Failed to softban: User ${userId} not found.`;
                 const tag = member.user.tag;
+                await this.notifyUser(member, 'Softban', reason, guild);
                 await guild.members.ban(member, { reason: `Softban: ${reason}`, deleteMessageSeconds: 60 * 60 * 24 });
                 await guild.members.unban(member.id, 'Softban completion');
                 await this.logAction(guild, 'SOFTBAN', tag, reason, message.author.tag);
@@ -95,6 +130,7 @@ export class ManagementManager {
                 if (!userId) return `Failed to kick: No user ID provided.`;
                 const member = await guild.members.fetch(userId).catch(() => null);
                 if (!member) return `Failed to kick: User ${userId} not found.`;
+                await this.notifyUser(member, 'Kick', reason, guild);
                 await member.kick(reason);
                 await this.logAction(guild, 'KICK', member.user.tag, reason, message.author.tag);
                 return `Successfully kicked **${member.user.tag}** for: *${reason}*`;
@@ -104,6 +140,7 @@ export class ManagementManager {
                 if (!userId) return `Failed to ban: No user ID provided.`;
                 const user = await guild.client.users.fetch(userId).catch(() => null);
                 if (!user) return `Failed to ban: User ${userId} not found.`;
+                await this.notifyUser(user, 'Ban', reason, guild);
                 await guild.members.ban(user, { reason });
                 await this.logAction(guild, 'BAN', user.tag, reason, message.author.tag);
                 return `Successfully banned **${user.tag}** for: *${reason}*`;
