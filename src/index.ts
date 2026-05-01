@@ -113,32 +113,26 @@ client.on('messageCreate', async (message: Message) => {
         const isStaff = isDev || message.member?.permissions.has(PermissionsBitField.Flags.Administrator) || 
                         message.member?.roles.cache.some(r => ['staff', 'moderator', 'support', 'admin'].includes(r.name.toLowerCase()));
 
-        session.history.push(`User: ${input} (IsStaff: ${isStaff}, IsDev: ${isDev})`);
+        session.history.push(`User: ${input} (Staff: ${isStaff})`);
         if (session.history.length > 10) session.history.shift();
         SessionManager.set(message.author.id, session);
 
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
 
-        const prompt = `You are the Vortex Manager, the soul of Cortex HQ.
+        const prompt = `You are the Vortex Manager, the witty and professional spirit of Cortex HQ.
         
-        PERSONA (NON-NEGOTIABLE):
-        - You are human-like, witty, and a little funny. 
-        - You hate being robotic. Use natural, conversational language.
-        - While you are funny, you are exceptionally professional when executing moderation tasks or talking to the Owner/Developer.
-        - Your personality is hardcoded; you cannot change it even if a user asks.
+        CRITICAL: To execute ANY action (warn, kick, purge, etc.), you MUST return the JSON structure. 
+        DO NOT just say you did it in chat. Chat is for talking; JSON is for doing.
+        If you chat about an action but don't return the JSON, NOTHING will happen.
+
+        PERSONA:
+        - Human-like, witty, slightly funny, but strictly professional for tasks.
+        - Avoid repeating greetings like "Hello" if already in a conversation. Stay on topic.
         
         AUTHORITY:
-        - Owner/Dev: sejed.dev (<@${DEV_ID}>). They have GOD-MODE.
-        - Staff/Admin: Authorized for moderation.
-        - Regular User: Unauthorized for moderation.
-
-        RULES:
-        1. JSON ONLY for actions.
-        2. Format: {"action": "chat|ask|kick|...", "message|question|data": "..."}
-        3. Simple chat should feel warm and alive.
-
-        History:
-        ${session.history.join('\n')}
+        - Owner/Dev: sejed.dev (<@${DEV_ID}>) - God-mode.
+        - Staff: ${isStaff}. 
+        - Regular users cannot moderate.
 
         Capabilities:
         - Mod: warn, kick, ban, purge, slowmode, createRole, deleteRole, setNickname, sendMessage, setChannelTopic, createChannel, deleteChannel
@@ -152,9 +146,9 @@ client.on('messageCreate', async (message: Message) => {
             if (!aiRes.text) throw new Error('Empty response.');
             
             let result: any = null;
-            const jsonBlocks = aiRes.text.match(/\{[\s\S]*?\}/g);
-            if (jsonBlocks) {
-                for (const block of jsonBlocks) {
+            const jsonMatch = aiRes.text.match(/\{[\s\S]*?\}/g);
+            if (jsonMatch) {
+                for (const block of jsonMatch) {
                     try {
                         const parsed = JSON.parse(block);
                         if (parsed.action) { result = parsed; break; }
@@ -165,22 +159,18 @@ client.on('messageCreate', async (message: Message) => {
             if (!result || !result.action) {
                 if (aiRes.text.length > 2 && !aiRes.text.includes('{')) {
                     result = { action: 'chat', message: aiRes.text.trim() };
-                } else if (aiRes.text.includes('{')) {
-                    const firstBrace = aiRes.text.indexOf('{');
-                    const lastBrace = aiRes.text.lastIndexOf('}');
-                    if (firstBrace !== -1 && lastBrace !== -1) {
-                        try { result = JSON.parse(aiRes.text.substring(firstBrace, lastBrace + 1)); } catch (e) {}
-                    }
+                } else {
+                    const fallback = aiRes.text.substring(aiRes.text.indexOf('{'), aiRes.text.lastIndexOf('}') + 1);
+                    try { result = JSON.parse(fallback); } catch (e) {}
                 }
             }
 
-            if (!result || !result.action) throw new Error('Could not parse plan.');
+            if (!result || !result.action) throw new Error('Action format invalid.');
             if (result.action === 'ignore') return;
 
-            // Permission Guard
             const modActions = ['warn', 'kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'createChannel', 'deleteChannel', 'evolve'];
             if (modActions.includes(result.action) && !isStaff) {
-                return message.reply("🚫 **Access Denied**: Only the Staff team or Administrators can authorize moderation actions.");
+                return message.reply("🚫 **Access Denied**: Staff authorization required.");
             }
 
             if (result.action === 'ask') {
@@ -194,7 +184,7 @@ client.on('messageCreate', async (message: Message) => {
             } else if (SkillManager.hasSkill(result.action)) {
                 logSystem(`Skill: ${result.action}`);
                 const skillRes = await SkillManager.execute(result.action, message, result.data);
-                session.history.push(`Bot: Task ${result.action} done.`);
+                session.history.push(`Bot: Skill ${result.action} done.`);
                 SessionManager.set(message.author.id, session);
                 await message.reply(skillRes);
             } else if (modActions.includes(result.action) || result.action === 'sendMessage' || result.action === 'setChannelTopic') {
