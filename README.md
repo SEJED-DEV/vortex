@@ -71,6 +71,6 @@ Vortex uses a **Modular Handler Pattern**:
 ## 📜 License
 This project is licensed under the **CC BY-NC-SA 4.0**. See `LICENSE` for details.
 
-## 👨‍💻 Developed by [Sejed TRABELSSI](https://sejed.dev)
+## 👨‍💻 Developed by Sejed TRABELSSI
 - **Support**: [Discord Server](https://discord.gg/pun3PXXDuE)
 - **Instagram**: [@http.sejed.official](https://www.instagram.com/http.sejed.official/)
