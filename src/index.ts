@@ -9,6 +9,7 @@ import { IntegrityManager } from './utils/IntegrityManager';
 import { GitHubManager } from './utils/GitHubManager';
 import { TriggerManager } from './skills/AutoResponder';
 import { PulseManager } from './skills/GitHubPulse';
+import { LevelManager } from './skills/LevelingSystem';
 import axios from 'axios';
 
 dotenv.config();
@@ -216,6 +217,8 @@ ${SkillManager.getSkillsPrompt()}
 - webSearch: {"action": "webSearch", "data": {"query": "..."}} (Uses live internet data)
 - githubPulse: {"action": "githubPulse", "data": {"repo": "owner/repo", "channelId": "ID", "active": true}} (Admin only)
 - autoResponder: {"action": "autoResponder", "data": {"subAction": "add|remove|list", "trigger": "!", "response": "..."}} (Staff only)
+- securityAudit: {"action": "securityAudit", "data": {}} (Admin only)
+- checkRank: {"action": "checkRank", "data": {"userId": "REAL_ID"}} (View user XP/level)
 
 PERSONALITY:
 - Witty and personable, but always accurate — never make things up to sound helpful.
@@ -248,7 +251,19 @@ process.on('unhandledRejection', (error: any) => {
 });
 
 client.on('messageCreate', async (message: Message) => {
-    if (message.author.bot || !client.user) return;
+    if (message.author.bot || !client.user || !message.guild) return;
+
+    // Award XP
+    const xpAmount = Math.floor(Math.random() * 10) + 15; // 15-25 XP
+    const { leveledUp, newLevel } = LevelManager.addXP(message.author.id, xpAmount);
+    if (leveledUp) {
+        const levelEmbed = new EmbedBuilder()
+            .setTitle('🎊 Level Up!')
+            .setDescription(`Congratulations <@${message.author.id}>! You've reached **Level ${newLevel}**!`)
+            .setColor('#FFD700')
+            .setTimestamp();
+        await message.channel.send({ embeds: [levelEmbed] });
+    }
 
     // Check Auto-Responder triggers
     const triggers = TriggerManager.getTriggers();
