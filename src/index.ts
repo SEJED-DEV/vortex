@@ -83,8 +83,10 @@ client.on('messageCreate', async (message: Message) => {
             .setTitle('Vortex Bot Credits')
             .setDescription('Vortex is an advanced AI-driven server management system.')
             .addFields(
-                { name: 'Developer', value: '[Sejed TRABELSSI](https://sejed.dev)', inline: true },
+                { name: 'Organization', value: 'Cortex HQ', inline: true },
+                { name: 'Owner', value: 'sejed.dev', inline: true },
                 { name: 'GitHub', value: '[SEJED-DEV/vortex](https://github.com/SEJED-DEV/vortex)', inline: true },
+                { name: 'Support', value: '[Discord Server](https://discord.gg/pun3PXXDuE)', inline: true },
                 { name: 'License', value: 'CC BY-NC-SA 4.0', inline: true }
             )
             .setColor('#1E90FF');
@@ -112,12 +114,14 @@ client.on('messageCreate', async (message: Message) => {
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
 
         const prompt = `You are the Vortex Manager. 
+        Organization: Cortex HQ
+        Owner: sejed.dev
+        Language: TypeScript.
 
         RULES:
         - Response MUST be a JSON object.
         - Format: {"action": "chat|ask|kick|...", "message|question|data": "..."}
         - Only use "evolve" if requested.
-        - Sentiment: ${isActiveConversation ? "Maintain flow" : "New context"}.
 
         History:
         ${session.history.join('\n')}
@@ -170,7 +174,7 @@ client.on('messageCreate', async (message: Message) => {
             } else if (SkillManager.hasSkill(result.action)) {
                 logSystem(`Skill: ${result.action}`);
                 const skillRes = await SkillManager.execute(result.action, message, result.data);
-                session.history.push(`Bot: Task ${result.action} completed.`);
+                session.history.push(`Bot: Task ${result.action} done.`);
                 SessionManager.set(message.author.id, session);
                 await message.reply(skillRes);
             } else if (['kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'sendMessage', 'setChannelTopic', 'createChannel', 'deleteChannel'].includes(result.action)) {
