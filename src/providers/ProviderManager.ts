@@ -11,11 +11,12 @@ export interface AIResponse {
 export class ProviderManager {
     private providers = ['gemini', 'openai', 'claude', 'groq', 'mistral', 'openrouter'];
     private openRouterModels = [
-        'openrouter/auto',
-        'qwen/qwen-2.5-7b-instruct:free',
-        'meta-llama/llama-3.1-8b-instruct:free',
-        'mistralai/mistral-7b-instruct:free',
-        'google/gemma-2-9b-it:free'
+        'anthropic/claude-3.5-sonnet',
+        'openai/gpt-4o',
+        'meta-llama/llama-3.1-405b-instruct',
+        'google/gemini-pro-1.5',
+        'mistralai/mistral-large-2407',
+        'meta-llama/llama-3.1-70b-instruct'
     ];
 
     async getResponse(prompt: string): Promise<AIResponse> {
@@ -30,8 +31,7 @@ export class ProviderManager {
 
     private async callProvider(provider: string, prompt: string): Promise<AIResponse | null> {
         if (provider === 'openrouter') {
-            const models = [...this.openRouterModels].sort(() => Math.random() - 0.5);
-            for (const modelId of models) {
+            for (const modelId of this.openRouterModels) {
                 try {
                     return await this.callOpenRouter(modelId, prompt);
                 } catch (error: any) {
@@ -89,9 +89,9 @@ export class ProviderManager {
     private async callGemini(key: string, prompt: string): Promise<AIResponse> {
         const { GoogleGenerativeAI } = require('@google/generative-ai');
         const genAI = new GoogleGenerativeAI(key);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
         const result = await model.generateContent(prompt);
-        return { text: result.response.text(), model: 'gemini-1.5-flash (Google)' };
+        return { text: result.response.text(), model: 'gemini-1.5-pro (Google)' };
     }
 
     private async callOpenAI(key: string, prompt: string): Promise<AIResponse> {
