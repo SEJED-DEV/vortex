@@ -228,10 +228,17 @@ PERSONALITY:
 - **MANDATORY**: When returning a JSON action (moderation or skill), do NOT include any conversational text. Only return the JSON. The system will handle the user feedback.`;}
 
 
-// Appends AI model attribution to text replies (disable with SHOW_AI_MODEL=false in .env)
-function appendModel(text: string, model: string): string {
-    if (process.env.SHOW_AI_MODEL === 'false') return text;
-    return `${text}\n-# Used **${model}**`;
+// Appends AI model and skill attribution to text replies
+function appendMetadata(text: string, model: string, skill?: string): string {
+    const showModel = process.env.SHOW_AI_MODEL !== 'false';
+    const showSkill = process.env.SHOW_SKILL_USED !== 'false';
+    
+    let footer = '';
+    if (showSkill && skill) footer += `Skill: **${skill}**`;
+    if (showModel) footer += `${footer ? ' • ' : ''}Used **${model}**`;
+    
+    if (!footer) return text;
+    return `${text}\n > -# ${footer}`;
 }
 
 client.on('clientReady', async () => {
@@ -394,14 +401,14 @@ client.on('messageCreate', async (message: Message) => {
                 const q = result.question || result.message || 'I need more information.';
                 session.history.push({ role: 'assistant', content: q });
                 SessionManager.set(message.author.id, session);
-                await message.reply(appendModel(q, aiRes.model));
+                await message.reply(appendMetadata(q, aiRes.model));
 
             } else if (result.action === 'chat') {
                 const msg = result.message || result.text || result.response || 'I processed your request.';
                 session.history.push({ role: 'assistant', content: msg });
                 SessionManager.set(message.author.id, session);
 
-                const fullMsg = appendModel(msg, aiRes.model);
+                const fullMsg = appendMetadata(msg, aiRes.model);
                 if (fullMsg.length > 1990) {
                     const chunks = fullMsg.match(/.{1,1990}/gs) || [fullMsg];
                     for (let i = 0; i < chunks.length; i++) {
@@ -450,13 +457,22 @@ client.on('messageCreate', async (message: Message) => {
                     SessionManager.set(message.author.id, session);
 
                     if (typeof finalResponse === 'string') {
-                        await message.reply(appendModel(finalResponse, aiRes.model));
+                        await message.reply(appendMetadata(finalResponse, aiRes.model, result.action));
                     } else {
                         const payload = finalResponse as any;
-                        if (process.env.SHOW_AI_MODEL !== 'false' && Array.isArray(payload?.embeds) && payload.embeds[0]) {
+                        const showModel = process.env.SHOW_AI_MODEL !== 'false';
+                        const showSkill = process.env.SHOW_SKILL_USED !== 'false';
+
+                        if ((showModel || showSkill) && Array.isArray(payload?.embeds) && payload.embeds[0]) {
                             try {
                                 const existing = payload.embeds[0].data?.footer?.text || '';
-                                payload.embeds[0].setFooter({ text: `${existing ? existing + ' • ' : ''}Model: ${aiRes.model}` });
+                                let footerParts = [];
+                                if (showSkill) footerParts.push(`Skill: ${result.action}`);
+                                if (showModel) footerParts.push(`Model: ${aiRes.model}`);
+                                
+                                payload.embeds[0].setFooter({ 
+                                    text: `${existing ? existing + ' • ' : ''}${footerParts.join(' • ')}` 
+                                });
                             } catch (_) {}
                         }
                         await message.reply(payload);

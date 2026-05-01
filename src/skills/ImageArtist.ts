@@ -17,7 +17,7 @@ export const ImageArtist: Skill = {
         const models = [
             (data.model === 'dalle' || data.model === 'dall-e') ? 'openai/dall-e-3' : 'black-forest-labs/flux-1-schnell',
             'openai/dall-e-3',
-            'black-forest-labs/flux-1-dev'
+            'black-forest-labs/flux-dev'
         ];
         
         let lastError = '';
