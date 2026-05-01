@@ -489,7 +489,7 @@ client.on('messageCreate', async (message: Message) => {
                 SessionManager.set(message.author.id, session);
 
                 try {
-                    const reply = appendModel(modRes, aiRes.model);
+                    const reply = appendMetadata(modRes, aiRes.model);
                     if (result.action === 'purge') {
                         await (message.channel as any).send(reply);
                     } else {
