@@ -1,34 +1,47 @@
 # Contributing to Vortex
 
-Thank you for your interest in contributing to Vortex! As a professional AI-driven project, we maintain high standards for code quality and documentation.
+We welcome contributions that expand the capabilities and intelligence of Vortex. To maintain the system's integrity and performance, please follow these guidelines.
 
-## Development Workflow
+## 🛠️ Development Workflow
 
-1. **Environment Setup**:
-   - Ensure you have Node.js v18+ installed.
-   - Install dependencies: `npm install`.
-   - Setup your `.env` file with necessary API keys.
+1. **Modular Skills**: If you are adding a new feature, implement it as a "Skill" in the `src/skills` directory. Avoid modifying the core `index.ts` unless absolutely necessary.
+2. **TypeScript**: All code must be written in TypeScript and follow the existing directory structure.
+3. **Security**: Never commit sensitive keys or credentials. Use the provided environment variable system.
+4. **Code Style**: 
+    - Keep functions focused and modular.
+    - Core system files follow a "minimal comment" policy to maintain focus on logic and security.
+    - Use the `logSystem` utility for consistent console output.
 
-2. **Coding Standards**:
-   - **Clean Code**: We follow a strict policy of no comments or emojis in the source code.
-   - **TypeScript**: All new features must be implemented in TypeScript with proper type safety.
-   - **Provider Integration**: When adding new AI providers, update the `ProviderManager.ts` to include fallback logic and proper attribution.
+## 🚀 Creating a Pull Request
 
-3. **Feature Implementation**:
-   - **Interactive Flow**: Any changes to the user interaction must maintain the conversational state machine in `index.ts`.
-   - **Server Building**: Ensure the `ServerBuilder.ts` remains decoupled from the AI logic.
+The bot itself is capable of generating Pull Requests for its own improvements. If you are a human contributor:
+1. Fork the repository.
+2. Create a feature branch.
+3. Commit your changes with clear, descriptive messages.
+4. Submit a Pull Request to the `main` branch.
 
-4. **Pull Request Process**:
-   - Update the `README.md` if your changes introduce new features or configuration requirements.
-   - Ensure the project builds successfully with `npm run build`.
+## 🧠 Skill Template
 
-## Documentation
+Every skill must export a default object conforming to the `Skill` interface:
 
-Documentation is a core part of Vortex. The `README.md` should always reflect the current state of the architecture and setup process. Any changes to the AI providers must be documented in the "Multi-Agent Architecture" section.
+```typescript
+import { Message } from 'discord.js';
+import { Skill } from './Skill';
 
-## License
+const MySkill: Skill = {
+    name: 'Skill Name',
+    description: 'Concise description for the AI',
+    actionId: 'unique_action_id',
+    jsonStructure: '{"action": "unique_action_id", "data": {...}}',
+    execute: async (message: Message, data: any) => {
+        // Implementation
+        return "Result message for the user";
+    }
+};
 
-By contributing to this repository, you agree that your contributions will be licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+export default MySkill;
+```
 
----
-Copyright (c) 2026 Sejed TRABELSSI.
+## 📜 Licensing
+
+By contributing to Vortex, you agree that your contributions will be licensed under the same **CC BY-NC-SA 4.0** license as the core project.
