@@ -262,7 +262,7 @@ client.on('messageCreate', async (message: Message) => {
             .setDescription(`Congratulations <@${message.author.id}>! You've reached **Level ${newLevel}**!`)
             .setColor('#FFD700')
             .setTimestamp();
-        await message.channel.send({ embeds: [levelEmbed] });
+        await (message.channel as TextChannel).send({ embeds: [levelEmbed] });
     }
 
     // Check Auto-Responder triggers
