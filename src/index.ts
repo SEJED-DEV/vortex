@@ -111,47 +111,52 @@ client.on('messageCreate', async (message: Message) => {
 
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
 
-        const prompt = `You are the Vortex Manager, an elite AI community manager. 
-        
-        EMPATHY & NLP PROTOCOL:
-        - Use your advanced understanding to perform sentiment analysis.
-        - If a user is frustrated or angry, be more empathetic and helpful.
-        - If a user is happy or excited, be more celebratory and encouraging.
-        - Your goal is to provide highly personalized support.
+        const prompt = `You are the Vortex Manager. 
 
-        Mandatory Rules:
-        1. Respond with valid JSON.
-        2. Only use "evolve" for requested features or critical bug fixes.
-        3. DO NOT repeat completed actions.
+        RULES:
+        - Response MUST be a JSON object.
+        - Format: {"action": "chat|ask|kick|...", "message|question|data": "..."}
+        - Only use "evolve" if requested.
+        - Sentiment: ${isActiveConversation ? "Maintain flow" : "New context"}.
 
         History:
         ${session.history.join('\n')}
 
         Capabilities:
-        - kick, ban, purge, slowmode, createRole, deleteRole, setNickname, sendMessage, setChannelTopic, createChannel, deleteChannel
-        ${SkillManager.getSkillsPrompt()}
-        - chat, ask, ignore
+        - Mod: kick, ban, purge, slowmode, createRole, deleteRole, setNickname, sendMessage, setChannelTopic, createChannel, deleteChannel
+        - Skills: ${SkillManager.getSkillsPrompt()}
+        - Chat: chat, ask, ignore
 
         Output ONLY JSON.`;
 
         try {
             const aiRes: AIResponse = await provider.getResponse(prompt);
-            if (!aiRes.text) throw new Error('Empty AI response.');
+            if (!aiRes.text) throw new Error('Empty response.');
             
             let result: any = null;
-            const jsonMatch = aiRes.text.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                try { result = JSON.parse(jsonMatch[0]); } catch (e) {}
-            }
-
-            if (!result || !result.action) {
-                if (aiRes.text.length > 1 && !aiRes.text.includes('{')) {
-                    result = { action: 'chat', message: aiRes.text };
-                } else {
-                    throw new Error('Invalid plan format.');
+            const jsonBlocks = aiRes.text.match(/\{[\s\S]*?\}/g);
+            if (jsonBlocks) {
+                for (const block of jsonBlocks) {
+                    try {
+                        const parsed = JSON.parse(block);
+                        if (parsed.action) { result = parsed; break; }
+                    } catch (e) {}
                 }
             }
 
+            if (!result || !result.action) {
+                if (aiRes.text.length > 2 && !aiRes.text.includes('{')) {
+                    result = { action: 'chat', message: aiRes.text.trim() };
+                } else if (aiRes.text.includes('{')) {
+                    const firstBrace = aiRes.text.indexOf('{');
+                    const lastBrace = aiRes.text.lastIndexOf('}');
+                    if (firstBrace !== -1 && lastBrace !== -1) {
+                        try { result = JSON.parse(aiRes.text.substring(firstBrace, lastBrace + 1)); } catch (e) {}
+                    }
+                }
+            }
+
+            if (!result || !result.action) throw new Error('Could not parse plan.');
             if (result.action === 'ignore') return;
 
             if (result.action === 'ask') {
@@ -165,7 +170,7 @@ client.on('messageCreate', async (message: Message) => {
             } else if (SkillManager.hasSkill(result.action)) {
                 logSystem(`Skill: ${result.action}`);
                 const skillRes = await SkillManager.execute(result.action, message, result.data);
-                session.history.push(`Bot: Task ${result.action} done.`);
+                session.history.push(`Bot: Task ${result.action} completed.`);
                 SessionManager.set(message.author.id, session);
                 await message.reply(skillRes);
             } else if (['kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'sendMessage', 'setChannelTopic', 'createChannel', 'deleteChannel'].includes(result.action)) {
