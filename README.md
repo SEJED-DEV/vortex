@@ -3,8 +3,6 @@
 
 Vortex is a state-of-the-art, AI-driven Discord management engine designed for high-security, autonomous, and professional community oversight. Built on a multi-model fallback architecture, Vortex transforms your server into a self-regulating ecosystem.
 
-![Vortex Banner](https://raw.githubusercontent.com/SEJED-DEV/vortex/main/banner.png) *(Placeholder for your banner)*
-
 ## 🚀 Advanced Capabilities
 
 ### 🧠 Vision-Capable AI Core
