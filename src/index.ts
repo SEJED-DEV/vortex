@@ -422,7 +422,7 @@ client.on('messageCreate', async (message: Message) => {
                     let finalResponse: any = skillRes;
 
                     // "Narrator" Pattern: Use AI to explain the skill result if it's a string or data
-                    if (typeof skillRes === 'string' || (typeof skillRes === 'object' && !skillRes.embeds)) {
+                    if (typeof skillRes === 'string' || (typeof skillRes === 'object' && !(skillRes as any).embeds)) {
                         const rawData = typeof skillRes === 'string' ? skillRes : JSON.stringify(skillRes);
                         
                         logSystem(`Narrating skill result...`);
