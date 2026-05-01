@@ -41,43 +41,69 @@ const ServerStats: Skill = {
 
         const createdAgo = Math.floor((Date.now() - guild.createdTimestamp) / (1000 * 60 * 60 * 24));
 
+        // Growth Metrics
+        const now = Date.now();
+        const oneDay = 24 * 60 * 60 * 1000;
+        const sevenDays = 7 * oneDay;
+        const joinedToday = guild.members.cache.filter(m => m.joinedTimestamp && now - m.joinedTimestamp < oneDay).size;
+        const joinedThisWeek = guild.members.cache.filter(m => m.joinedTimestamp && now - m.joinedTimestamp < sevenDays).size;
+
+        // Engagement Metrics
+        const mostPopulatedVC = guild.channels.cache
+            .filter(c => c.type === 2) // Voice
+            .sort((a: any, b: any) => (b.members?.size || 0) - (a.members?.size || 0))
+            .first() as any;
+        
+        let vcStats = 'No active voice channels';
+        if (mostPopulatedVC && mostPopulatedVC.members?.size > 0) {
+            vcStats = `**#${mostPopulatedVC.name}** (${mostPopulatedVC.members.size} users)`;
+        }
+
+        // Most recent active text channel
+        const mostRecentText = guild.channels.cache
+            .filter(c => c.type === 0 && c.lastMessageId) // Text
+            .sort((a: any, b: any) => BigInt(b.lastMessageId) > BigInt(a.lastMessageId) ? 1 : -1)
+            .first() as any;
+            
+        const textStats = mostRecentText ? `**<#${mostRecentText.id}>** (Most Recent)` : 'No recent activity';
+
         const embed = new EmbedBuilder()
-            .setTitle(`📊 Server Stats: ${guild.name}`)
+            .setTitle(`📊 Server Analytics: ${guild.name}`)
             .setThumbnail(guild.iconURL({ size: 256 }) || '')
             .setColor('#5865F2')
             .addFields(
                 {
-                    name: '👥 Members',
+                    name: '👥 Population',
                     value: `Total: **${totalMembers}**\nHumans: **${humans}** | Bots: **${bots}**\n${presenceStr}`,
                     inline: true
                 },
                 {
-                    name: '📁 Channels',
+                    name: '📈 Growth',
+                    value: `Joined Today: **+${joinedToday}**\nJoined This Week: **+${joinedThisWeek}**`,
+                    inline: true
+                },
+                {
+                    name: '🔥 Engagement',
+                    value: `Top VC: ${vcStats}\nActive Chat: ${textStats}`,
+                    inline: true
+                },
+                {
+                    name: '📁 Infrastructure',
                     value: `Text: **${textChannels}** | Voice: **${voiceChannels}**\nCategories: **${categories}** | Threads: **${threads}**`,
                     inline: true
                 },
                 {
-                    name: `${boostEmoji} Boost Status`,
-                    value: `Level **${boostLevel}** — **${boostCount}** boosts`,
+                    name: `${boostEmoji} Economy & Status`,
+                    value: `Boost Level: **${boostLevel}** (**${boostCount}** boosts)\nRoles: **${roles}** | Emojis: **${emojis}**`,
                     inline: true
                 },
                 {
-                    name: '🎭 Roles & Extras',
-                    value: `Roles: **${roles}** | Emojis: **${emojis}** | Stickers: **${stickers}**`,
-                    inline: true
-                },
-                {
-                    name: '🔒 Verification',
-                    value: verificationLevels[guild.verificationLevel] || 'Unknown',
-                    inline: true
-                },
-                {
-                    name: '📅 Created',
-                    value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R> (${createdAgo} days ago)`,
+                    name: '🛡️ Security',
+                    value: `Verification: **${verificationLevels[guild.verificationLevel] || 'Unknown'}**\nCreated: <t:${Math.floor(guild.createdTimestamp / 1000)}:R>`,
                     inline: true
                 }
             )
-            .setFooter({ text: `Server ID: ${guild.id}` })
+            .setFooter({ text: `Server ID: ${guild.id} • Analytics Engine` })
             .setTimestamp();
 
         return { embeds: [embed] } as any;

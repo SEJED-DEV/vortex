@@ -6,12 +6,14 @@ import path from 'path';
 interface Trigger {
     id: string;
     trigger: string;
-    response: string;
+    responses: string[];
     creatorId: string;
+    isRegex: boolean;
 }
 
 export class TriggerManager {
     private static FILE_PATH = path.join(process.cwd(), 'data', 'triggers.json');
+    public static cooldowns: Map<string, number> = new Map(); // In-memory cooldown tracker
 
     private static init() {
         const dir = path.dirname(this.FILE_PATH);
@@ -21,24 +23,43 @@ export class TriggerManager {
 
     public static getTriggers(): Trigger[] {
         this.init();
-        return JSON.parse(fs.readFileSync(this.FILE_PATH, 'utf-8'));
+        const data = JSON.parse(fs.readFileSync(this.FILE_PATH, 'utf-8'));
+        // Backwards compatibility mapping for old string responses
+        return data.map((t: any) => ({
+            id: t.id,
+            trigger: t.trigger,
+            responses: Array.isArray(t.responses) ? t.responses : (t.response ? [t.response] : ["No response"]),
+            creatorId: t.creatorId,
+            isRegex: !!t.isRegex
+        }));
     }
 
-    public static addTrigger(trigger: string, response: string, creatorId: string): void {
+    public static addTrigger(trigger: string, responseRaw: string, creatorId: string): void {
         const triggers = this.getTriggers();
+        
+        // Detect regex: starts and ends with /
+        const isRegex = trigger.startsWith('/') && trigger.endsWith('/');
+        const cleanTrigger = isRegex ? trigger.slice(1, -1) : trigger.toLowerCase();
+
+        // Detect multiple responses split by |
+        const responses = responseRaw.split('|').map(r => r.trim());
+
         triggers.push({
-            id: Math.random().toString(36).substr(2, 9),
-            trigger: trigger.toLowerCase(),
-            response,
-            creatorId
+            id: Math.random().toString(36).substring(2, 9),
+            trigger: cleanTrigger,
+            responses,
+            creatorId,
+            isRegex
         });
         fs.writeFileSync(this.FILE_PATH, JSON.stringify(triggers, null, 2));
     }
 
     public static removeTrigger(trigger: string): boolean {
         const triggers = this.getTriggers();
+        const cleanTrigger = (trigger.startsWith('/') && trigger.endsWith('/')) ? trigger.slice(1, -1) : trigger.toLowerCase();
+        
         const initialLen = triggers.length;
-        const filtered = triggers.filter(t => t.trigger !== trigger.toLowerCase());
+        const filtered = triggers.filter(t => t.trigger !== cleanTrigger);
         fs.writeFileSync(this.FILE_PATH, JSON.stringify(filtered, null, 2));
         return filtered.length < initialLen;
     }
@@ -67,16 +88,22 @@ export const AutoResponder: Skill = {
             return success ? `✅ Successfully removed trigger: \`${trigger}\`` : `❌ Trigger \`${trigger}\` not found.`;
         }
 
-        const triggers = TriggerManager.getTriggers();
-        if (triggers.length === 0) return "ℹ️ No auto-response triggers configured.";
+        if (subAction === 'list' || !subAction) {
+            const triggers = TriggerManager.getTriggers();
+            if (triggers.length === 0) return "ℹ️ No auto-response triggers configured.";
 
-        const embed = new EmbedBuilder()
-            .setTitle('🤖 Auto-Response Triggers')
-            .setColor('#5865F2')
-            .setDescription(triggers.map(t => `• **${t.trigger}**`).join('\n'))
-            .setFooter({ text: `Total Triggers: ${triggers.length}` });
+            const embed = new EmbedBuilder()
+                .setTitle('🤖 Auto-Response Triggers')
+                .setColor('#5865F2')
+                .setDescription(triggers.map(t => {
+                    const displayTrigger = t.isRegex ? `/${t.trigger}/ (Regex)` : `"${t.trigger}"`;
+                    return `• **${displayTrigger}** — ${t.responses.length} response(s)`;
+                }).join('\n'))
+                .setFooter({ text: `Total Triggers: ${triggers.length}` });
 
-        return { embeds: [embed] };
+            return { embeds: [embed] };
+        }
+        return "❌ Invalid subAction. Use add, remove, or list.";
     }
 };
 

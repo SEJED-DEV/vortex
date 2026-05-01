@@ -23,7 +23,8 @@ export class LevelManager {
         return JSON.parse(fs.readFileSync(this.FILE_PATH, 'utf-8'));
     }
 
-    public static addXP(userId: string, amount: number): { leveledUp: boolean, newLevel: number } {
+    public static async addXP(member: import('discord.js').GuildMember, amount: number): Promise<{ leveledUp: boolean, newLevel: number }> {
+        const userId = member.id;
         const data = this.getData();
         if (!data[userId]) {
             data[userId] = { xp: 0, level: 0, lastMsg: 0 };
@@ -35,7 +36,17 @@ export class LevelManager {
         // 1 minute cooldown per XP gain to prevent spam
         if (now - user.lastMsg < 60000) return { leveledUp: false, newLevel: user.level };
 
-        user.xp += amount;
+        // Apply XP Multiplier (e.g., if user has a premium role or is boosting)
+        // You can set the multiplier role ID in .env, or default to a generic check (like Premium Subscriber)
+        const multiplierRoleId = process.env.XP_MULTIPLIER_ROLE_ID;
+        let finalAmount = amount;
+        if (multiplierRoleId && member.roles.cache.has(multiplierRoleId)) {
+            finalAmount = Math.floor(amount * 1.5); // 1.5x XP Boost
+        } else if (member.premiumSince) {
+            finalAmount = Math.floor(amount * 1.2); // 1.2x Server Booster Boost
+        }
+
+        user.xp += finalAmount;
         user.lastMsg = now;
 
         const nextLevelXP = (user.level + 1) * 500;
@@ -44,6 +55,19 @@ export class LevelManager {
         if (user.xp >= nextLevelXP) {
             user.level += 1;
             leveledUp = true;
+            
+            // Check for Role Rewards
+            try {
+                // Example configuration: { "5": "123456789", "10": "987654321" }
+                const rewardsConfig = process.env.ROLE_REWARDS ? JSON.parse(process.env.ROLE_REWARDS) : {};
+                const rewardRoleId = rewardsConfig[user.level.toString()];
+                
+                if (rewardRoleId && !member.roles.cache.has(rewardRoleId)) {
+                    await member.roles.add(rewardRoleId, `Reached Level ${user.level}`);
+                }
+            } catch (e) {
+                console.error("Failed to parse or assign Role Rewards:", e);
+            }
         }
 
         fs.writeFileSync(this.FILE_PATH, JSON.stringify(data, null, 2));
@@ -54,17 +78,53 @@ export class LevelManager {
         const data = this.getData();
         return data[userId] || null;
     }
+    public static getLeaderboard(): { userId: string, xp: number, level: number }[] {
+        const data = this.getData();
+        return Object.keys(data)
+            .map(userId => ({ userId, xp: data[userId].xp, level: data[userId].level }))
+            .sort((a, b) => b.xp - a.xp)
+            .slice(0, 10);
+    }
 }
 
 export const LevelingSystem: Skill = {
-    actionId: 'checkRank',
+    actionId: 'vortexXP',
     name: 'Vortex XP System',
-    description: 'Check your current level, XP, and progress towards the next rank.',
-    jsonStructure: '{"action": "checkRank", "data": {"userId": "OPTIONAL_ID"}}',
+    description: 'Check your current rank, view the server leaderboard, or manage XP settings.',
+    jsonStructure: '{"action": "vortexXP", "data": {"subAction": "checkRank|leaderboard", "userId": "OPTIONAL_ID"}}',
     execute: async (message: Message, data: any): Promise<any> => {
+        const subAction = data.subAction || 'checkRank';
+
+        if (subAction === 'leaderboard') {
+            const topUsers = LevelManager.getLeaderboard();
+            if (topUsers.length === 0) return "ℹ️ The leaderboard is currently empty.";
+
+            const embed = new EmbedBuilder()
+                .setTitle('🏆 Vortex XP Leaderboard')
+                .setColor('#FFD700')
+                .setTimestamp();
+
+            let description = '';
+            for (let i = 0; i < topUsers.length; i++) {
+                const userObj = topUsers[i];
+                // Using tags if available, otherwise just mention
+                description += `**${i + 1}.** <@${userObj.userId}> — Level \`${userObj.level}\` (${userObj.xp} XP)\n`;
+            }
+            embed.setDescription(description);
+
+            return { embeds: [embed] };
+        }
+
+        // checkRank fallback
         const targetId = data.userId || message.author.id;
         const rank = LevelManager.getRank(targetId);
-        const targetUser = await message.client.users.fetch(targetId);
+        
+        let targetUser;
+        try {
+            targetUser = await message.client.users.fetch(targetId);
+        } catch {
+            return `❌ Could not find user with ID ${targetId}.`;
+        }
 
         if (!rank) {
             return `ℹ️ **${targetUser.username}** hasn't earned any XP yet! Start chatting to level up.`;

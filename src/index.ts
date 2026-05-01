@@ -216,9 +216,9 @@ ${SkillManager.getSkillsPrompt()}
 - generateImage: {"action": "generateImage", "data": {"prompt": "...", "model": "flux|dalle"}}
 - webSearch: {"action": "webSearch", "data": {"query": "..."}} (Uses live internet data)
 - githubPulse: {"action": "githubPulse", "data": {"repo": "owner/repo", "channelId": "ID", "active": true}} (Admin only)
-- autoResponder: {"action": "autoResponder", "data": {"subAction": "add|remove|list", "trigger": "!", "response": "..."}} (Staff only)
+- autoResponder: {"action": "autoResponder", "data": {"subAction": "add|remove|list", "trigger": "word|/regex/", "response": "Response 1|Response 2"}} (Staff only)
 - securityAudit: {"action": "securityAudit", "data": {}} (Admin only)
-- checkRank: {"action": "checkRank", "data": {"userId": "REAL_ID"}} (View user XP/level)
+- vortexXP: {"action": "vortexXP", "data": {"subAction": "checkRank|leaderboard", "userId": "REAL_ID"}} (View user XP or top 10)
 
 PERSONALITY:
 - Witty and personable, but always accurate — never make things up to sound helpful.
@@ -238,7 +238,7 @@ function appendMetadata(text: string, model: string, skill?: string): string {
     if (showModel) footer += `${footer ? ' • ' : ''}Used **${model}**`;
     
     if (!footer) return text;
-    return `${text}\n > -# ${footer}`;
+    return `${text}\n-# ${footer}`;
 }
 
 client.on('clientReady', async () => {
@@ -259,11 +259,11 @@ process.on('unhandledRejection', (error: any) => {
 });
 
 client.on('messageCreate', async (message: Message) => {
-    if (message.author.bot || !client.user || !message.guild) return;
+    if (message.author.bot || !client.user || !message.guild || !message.member) return;
 
     // Award XP
     const xpAmount = Math.floor(Math.random() * 10) + 15; // 15-25 XP
-    const { leveledUp, newLevel } = LevelManager.addXP(message.author.id, xpAmount);
+    const { leveledUp, newLevel } = await LevelManager.addXP(message.member, xpAmount);
     if (leveledUp) {
         const levelEmbed = new EmbedBuilder()
             .setTitle('🎊 Level Up!')
@@ -276,9 +276,33 @@ client.on('messageCreate', async (message: Message) => {
     // Check Auto-Responder triggers
     const triggers = TriggerManager.getTriggers();
     const lowerMsg = message.content.toLowerCase();
-    const match = triggers.find(t => lowerMsg.includes(t.trigger));
-    if (match) {
-        return message.reply(match.response);
+    
+    for (const t of triggers) {
+        let isMatch = false;
+        
+        if (t.isRegex) {
+            try {
+                const regex = new RegExp(t.trigger, 'i');
+                isMatch = regex.test(message.content);
+            } catch (e) {
+                console.error(`Invalid regex trigger: ${t.trigger}`);
+            }
+        } else {
+            isMatch = lowerMsg.includes(t.trigger);
+        }
+
+        if (isMatch) {
+            // Check cooldown (30 seconds)
+            const now = Date.now();
+            const lastFired = TriggerManager.cooldowns.get(t.id) || 0;
+            
+            if (now - lastFired > 30000) {
+                TriggerManager.cooldowns.set(t.id, now);
+                const randomResponse = t.responses[Math.floor(Math.random() * t.responses.length)];
+                await message.reply(randomResponse);
+            }
+            break; // Stop after first match to prevent multiple responses
+        }
     }
 
     if (message.content === '!credits') {

@@ -1,19 +1,18 @@
-import { Message, EmbedBuilder } from 'discord.js';
+import { Message, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
 import { Skill } from './Skill';
 
 const PollCreator: Skill = {
     name: 'Poll Creator',
-    description: 'Creates an interactive poll embed with reaction-based voting in any channel',
+    description: 'Creates an interactive button-based poll with live results in any channel',
     actionId: 'createPoll',
-    jsonStructure: '{"action": "createPoll", "data": {"question": "Poll question?", "options": ["Option A", "Option B", "Option C"], "channelId": "optional CHANNEL_ID", "duration": "optional minutes"}}',
+    jsonStructure: '{"action": "createPoll", "data": {"question": "Poll question?", "options": ["Option A", "Option B"], "channelId": "optional CHANNEL_ID", "duration": "optional minutes"}}',
     execute: async (message: Message, data: any): Promise<string> => {
         const guild = message.guild!;
         const question = data?.question || data?.title;
         if (!question || typeof question !== 'string') return `❌ Poll failed: No question provided.`;
 
-        const options: string[] = Array.isArray(data?.options) ? data.options.slice(0, 9) : ['Yes', 'No'];
-        const EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
-        const duration = parseInt(data?.duration) || 0;
+        const options: string[] = Array.isArray(data?.options) ? data.options.slice(0, 5) : ['Yes', 'No'];
+        const duration = parseInt(data?.duration) || 60; // default 60 minutes
 
         const targetChannel = data?.channelId
             ? guild.channels.cache.get(String(data.channelId)) as any ||
@@ -22,47 +21,82 @@ const PollCreator: Skill = {
 
         if (!targetChannel || !targetChannel.isTextBased()) return `❌ Poll failed: Invalid channel.`;
 
-        const optionsText = options.map((opt, i) => `${EMOJIS[i]} **${opt}**`).join('\n');
+        const votes = new Map<string, number>(); // UserId -> OptionIndex
+        const counts = new Array(options.length).fill(0);
 
-        const embed = new EmbedBuilder()
-            .setTitle(`📊 ${question}`)
-            .setDescription(optionsText)
-            .setColor('#5865F2')
-            .setFooter({ text: `Poll by ${message.author.tag}${duration > 0 ? ` • Ends in ${duration} minute(s)` : ''}` })
-            .setTimestamp();
+        const generateEmbed = () => {
+            const totalVotes = counts.reduce((a, b) => a + b, 0);
+            const optionsText = options.map((opt, i) => {
+                const count = counts[i];
+                const percentage = totalVotes === 0 ? 0 : Math.round((count / totalVotes) * 100);
+                const progressBar = '🟩'.repeat(Math.floor(percentage / 10)) + '⬛'.repeat(10 - Math.floor(percentage / 10));
+                return `**${opt}**\n${progressBar} ${percentage}% (${count} votes)`;
+            }).join('\n\n');
 
-        const pollMessage = await targetChannel.send({ embeds: [embed] });
+            return new EmbedBuilder()
+                .setTitle(`📊 ${question}`)
+                .setDescription(optionsText)
+                .setColor('#5865F2')
+                .setFooter({ text: `Total Votes: ${totalVotes} • Ends in ${duration} minute(s)` })
+                .setTimestamp();
+        };
 
-        for (let i = 0; i < options.length; i++) {
-            await pollMessage.react(EMOJIS[i]).catch(() => {});
-        }
+        const buttons = options.map((opt, i) => 
+            new ButtonBuilder()
+                .setCustomId(`poll_${i}`)
+                .setLabel(opt.length > 80 ? opt.substring(0, 77) + '...' : opt)
+                .setStyle(ButtonStyle.Primary)
+        );
 
-        if (duration > 0) {
-            setTimeout(async () => {
-                try {
-                    const updated = await pollMessage.fetch();
-                    const results = options.map((opt, i) => {
-                        const reaction = updated.reactions.cache.get(EMOJIS[i]);
-                        const count = (reaction?.count || 1) - 1;
-                        return { opt, count };
-                    }).sort((a, b) => b.count - a.count);
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
 
-                    const winner = results[0];
-                    const resultsText = results.map((r, i) => `${EMOJIS[i]} **${r.opt}** — ${r.count} vote(s)`).join('\n');
+        const pollMessage = await targetChannel.send({ embeds: [generateEmbed()], components: [row] });
 
-                    const resultEmbed = new EmbedBuilder()
-                        .setTitle(`📊 Poll Results: ${question}`)
-                        .setDescription(resultsText)
-                        .addFields({ name: '🏆 Winner', value: `**${winner.opt}** with **${winner.count}** vote(s)!` })
-                        .setColor('#57F287')
-                        .setTimestamp();
+        const collector = pollMessage.createMessageComponentCollector({ 
+            componentType: ComponentType.Button, 
+            time: duration * 60 * 1000 
+        });
 
-                    await targetChannel.send({ embeds: [resultEmbed] });
-                } catch (e) {}
-            }, duration * 60 * 1000);
-        }
+        collector.on('collect', async (i: any) => {
+            const optionIndex = parseInt(i.customId.split('_')[1]);
+            const userId = i.user.id;
 
-        return `✅ Poll created in **#${targetChannel.name}** with ${options.length} option(s)!${duration > 0 ? ` Results will post in ${duration} minute(s).` : ''}`;
+            if (votes.has(userId)) {
+                const oldVote = votes.get(userId)!;
+                if (oldVote === optionIndex) {
+                    await i.reply({ content: 'You have already voted for this option.', ephemeral: true });
+                    return;
+                }
+                // Change vote
+                counts[oldVote]--;
+            }
+
+            votes.set(userId, optionIndex);
+            counts[optionIndex]++;
+
+            await i.update({ embeds: [generateEmbed()] });
+        });
+
+        collector.on('end', async () => {
+            const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                buttons.map(b => ButtonBuilder.from(b).setDisabled(true))
+            );
+
+            const finalEmbed = generateEmbed().setColor('#57F287').setFooter({ text: `Poll Ended • Total Votes: ${votes.size}` });
+            
+            // Find Winner
+            const maxVotes = Math.max(...counts);
+            const winners = options.filter((_, i) => counts[i] === maxVotes);
+            
+            if (maxVotes > 0) {
+                finalEmbed.addFields({ name: '🏆 Winner', value: `**${winners.join(', ')}** with **${maxVotes}** vote(s)!` });
+            }
+
+            await pollMessage.edit({ embeds: [finalEmbed], components: [disabledRow] }).catch(() => {});
+            await targetChannel.send({ content: `📊 The poll **"${question}"** has ended!`, embeds: [finalEmbed] });
+        });
+
+        return `✅ Interactive Poll created in **#${targetChannel.name}**! Results will finalize in ${duration} minute(s).`;
     }
 };
 
