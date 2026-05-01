@@ -70,6 +70,8 @@ Vortex responds natively to conversational requests using these underlying modul
 
 ## 🏗️ Architecture
 
+Vortex is built with a focus on performance and modularity, inspired by and utilizing the **[Sapphire Framework](https://sapphirejs.dev/)**. Special thanks to the Sapphire community for providing the structural foundation and visual inspiration for our logging and management systems.
+
 Vortex uses a **Modular Handler Pattern**:
 - **`ProviderManager`**: Manages model rotation and fallbacks.
 - **`ManagementManager`**: Executes low-level Discord actions (bans, roles, channels).
