@@ -20,19 +20,29 @@ const SelfEvolution: Skill = {
         
         switch (data.type) {
             case 'read': {
-                const filePath = path.join(baseDir, data.path);
-                if (!fs.existsSync(filePath)) return `Error: File ${data.path} not found.`;
-                const content = fs.readFileSync(filePath, 'utf-8');
-                return `Code contents of ${data.path}:\n\`\`\`typescript\n${content.substring(0, 1500)}\n\`\`\``;
+                const targetPath = path.join(baseDir, data.path);
+                if (!fs.existsSync(targetPath)) return `Error: Path ${data.path} not found.`;
+                
+                const stats = fs.statSync(targetPath);
+                if (stats.isDirectory()) {
+                    const files = fs.readdirSync(targetPath);
+                    return `Directory listing for ${data.path}:\n${files.join('\n')}`;
+                } else {
+                    const content = fs.readFileSync(targetPath, 'utf-8');
+                    return `Code contents of ${data.path}:\n\`\`\`typescript\n${content.substring(0, 1500)}\n\`\`\``;
+                }
             }
             case 'write': {
                 const filePath = path.join(baseDir, data.path);
+                const dirPath = path.dirname(filePath);
+                if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+                
                 const oldContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf-8') : '[New File]';
                 fs.writeFileSync(filePath, data.content);
                 
-                await ManagementManager.logAction(message.guild!, 'SELF_EVOLVE', `Modified ${data.path}`, `Code Change Recorded. Old size: ${oldContent.length} chars, New size: ${data.content.length} chars.`, message.author.tag);
+                await ManagementManager.logAction(message.guild!, 'SELF_EVOLVE', `Modified ${data.path}`, `Code Change Recorded.`, message.author.tag);
                 
-                return `Successfully updated ${data.path}. You must run 'rebuild' to apply changes.`;
+                return `Successfully updated ${data.path}. Use 'rebuild' to apply changes.`;
             }
             case 'push': {
                 return await GitHubManager.createPullRequest(
