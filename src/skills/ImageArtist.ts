@@ -14,45 +14,54 @@ export const ImageArtist: Skill = {
         const key = process.env.OPENROUTER_API_KEY;
         if (!key) return "❌ OpenRouter API key is missing. Cannot generate image.";
 
-        // Default to Flux Schnell as it's fast and high quality
-        const modelId = (data.model === 'dalle' || data.model === 'dall-e') ? 'openai/dall-e-3' : 'black-forest-labs/flux-1-schnell';
+        const models = [
+            (data.model === 'dalle' || data.model === 'dall-e') ? 'openai/dall-e-3' : 'black-forest-labs/flux-1-schnell',
+            'openai/dall-e-3',
+            'black-forest-labs/flux-1-dev'
+        ];
+        
+        let lastError = '';
 
-        try {
-            const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-                model: modelId,
-                messages: [{ role: 'user', content: prompt }]
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${key}`,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': 'https://github.com/SEJED-DEV/vortex',
-                    'X-Title': 'Vortex Manager'
-                },
-                timeout: 150000 
-            });
+        for (const modelId of models) {
+            try {
+                const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+                    model: modelId,
+                    messages: [{ role: 'user', content: prompt }]
+                }, {
+                    headers: {
+                        'Authorization': `Bearer ${key}`,
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': 'https://github.com/SEJED-DEV/vortex',
+                        'X-Title': 'Vortex Manager'
+                    },
+                    timeout: 150000 
+                });
 
-            const result = response.data?.choices?.[0]?.message?.content;
-            if (!result) throw new Error("No image data received from AI.");
+                const result = response.data?.choices?.[0]?.message?.content;
+                if (!result) continue;
 
-            // Extract first URL found in the response
-            const urlMatch = result.match(/https?:\/\/[^\s\)\"\'\>]+/);
-            const imageUrl = urlMatch ? urlMatch[0] : null;
+                // Extract first URL found in the response
+                const urlMatch = result.match(/https?:\/\/[^\s\)\"\'\>]+/);
+                const imageUrl = urlMatch ? urlMatch[0] : null;
 
-            if (!imageUrl) {
-                 return `❌ Image generation failed. The AI did not provide a valid URL. Response: ${result.substring(0, 500)}`;
+                if (!imageUrl) continue;
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`🎨 Artwork: ${prompt.substring(0, 200)}${prompt.length > 200 ? '...' : ''}`)
+                    .setImage(imageUrl)
+                    .setColor('#FF00FF')
+                    .setFooter({ text: `Generated via ${modelId}` })
+                    .setTimestamp();
+
+                return { embeds: [embed] };
+            } catch (error: any) {
+                lastError = error.message;
+                if (error.response?.data?.error?.message) lastError = error.response.data.error.message;
+                continue;
             }
-
-            const embed = new EmbedBuilder()
-                .setTitle(`🎨 Artwork: ${prompt.substring(0, 200)}${prompt.length > 200 ? '...' : ''}`)
-                .setImage(imageUrl)
-                .setColor('#FF00FF')
-                .setFooter({ text: `Generated via ${modelId}` })
-                .setTimestamp();
-
-            return { embeds: [embed] };
-        } catch (error: any) {
-            return `❌ Error generating image: ${error.message}`;
         }
+
+        return `❌ Image generation failed after trying multiple models. Last error: ${lastError}`;
     }
 };
 
