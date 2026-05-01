@@ -111,14 +111,18 @@ client.on('messageCreate', async (message: Message) => {
 
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
 
-        const prompt = `You are the Vortex Manager. 
-        Language: TypeScript.
+        const prompt = `You are the Vortex Manager, an elite AI community manager. 
+        
+        EMPATHY & NLP PROTOCOL:
+        - Use your advanced understanding to perform sentiment analysis.
+        - If a user is frustrated or angry, be more empathetic and helpful.
+        - If a user is happy or excited, be more celebratory and encouraging.
+        - Your goal is to provide highly personalized support.
 
         Mandatory Rules:
-        1. Respond with a valid JSON action.
-        2. Simple chat: {"action": "chat", "message": "Text"}
-        3. Only use "evolve" if the user explicitly asks for a NEW capability or if a bug MUST be fixed. Do not evolve on every message.
-        4. No repeating.
+        1. Respond with valid JSON.
+        2. Only use "evolve" for requested features or critical bug fixes.
+        3. DO NOT repeat completed actions.
 
         History:
         ${session.history.join('\n')}
@@ -128,7 +132,7 @@ client.on('messageCreate', async (message: Message) => {
         ${SkillManager.getSkillsPrompt()}
         - chat, ask, ignore
 
-        Output ONLY valid JSON.`;
+        Output ONLY JSON.`;
 
         try {
             const aiRes: AIResponse = await provider.getResponse(prompt);
@@ -141,7 +145,6 @@ client.on('messageCreate', async (message: Message) => {
             }
 
             if (!result || !result.action) {
-                // Last ditch effort for chat
                 if (aiRes.text.length > 1 && !aiRes.text.includes('{')) {
                     result = { action: 'chat', message: aiRes.text };
                 } else {
@@ -164,7 +167,7 @@ client.on('messageCreate', async (message: Message) => {
                 const skillRes = await SkillManager.execute(result.action, message, result.data);
                 session.history.push(`Bot: Task ${result.action} done.`);
                 SessionManager.set(message.author.id, session);
-                await message.reply(`${skillRes}`);
+                await message.reply(skillRes);
             } else if (['kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'sendMessage', 'setChannelTopic', 'createChannel', 'deleteChannel'].includes(result.action)) {
                 logSystem(`Mod: ${result.action}`);
                 const modRes = await ManagementManager.execute(message, result.action, result.data);
