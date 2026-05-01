@@ -1,0 +1,22 @@
+{
+  "name": "vortex-bot",
+  "version": "1.0.0",
+  "description": "A state-of-the-art Discord bot that automates server architecture through interactive AI-driven dialogues.",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5",
+    "axios": "^1.6.7",
+    "@google/generative-ai": "^0.2.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.11.19"
+  }
+}
