@@ -94,60 +94,40 @@ client.on('messageCreate', async (message: Message) => {
     const isMentioned = message.mentions.has(client.user!);
     const isSpamChannel = (message.channel as any).name?.toLowerCase().includes('ai') || (message.channel as any).name?.toLowerCase().includes('spam');
     const session = SessionManager.get(message.author.id);
-    const isActiveConversation = (Date.now() - session.lastActivity) < 120000; // 2 minutes window
+    const isActiveConversation = (Date.now() - session.lastActivity) < 120000;
 
     if (isMentioned || isSpamChannel || isActiveConversation) {
         const input = message.content.replace(`<@!${client.user!.id}>`, '').replace(`<@${client.user!.id}>`, '').trim();
         
         if (input.toLowerCase() === 'reset') {
             SessionManager.delete(message.author.id);
-            return message.reply('Memory cleared. What is our next objective?');
+            return message.reply('Memory cleared. System reset to idle state.');
         }
 
         session.history.push(`User: ${input}`);
-        if (session.history.length > 15) session.history.shift();
+        if (session.history.length > 10) session.history.shift();
         SessionManager.set(message.author.id, session);
 
         if (message.channel.isTextBased()) await (message.channel as any).sendTyping();
 
-        const prompt = `You are the Vortex Manager, a world-class Discord server administrator. 
+        const prompt = `You are the Vortex Manager. 
+        Current State: ${session.history.length > 0 ? "In conversation" : "Idle"}
+        
+        Mandatory Rules:
+        1. DO NOT repeat completed actions. Check history: if an action (e.g. build, sendMessage) was already executed successfully, DO NOT do it again unless explicitly asked to repeat.
+        2. BE DYNAMIC. If you just finished a task, ask what's next or provide a status update.
+        3. IGNORE accidental messages using {"action": "ignore"}.
+        4. SECURITY: No code sharing or credential mentions.
 
-        Project Knowledge:
-        - Creator: Sejed TRABELSSI
-        - Site: https://sejed.dev
-        - GitHub: https://github.com/SejedTr/vortex
-        - License: CC BY-NC-SA 4.0
-
-        System Context:
-        ${IntegrityManager.checkStatus()}
-        ${recentLogs.join('\n')}
-
-        History:
+        History (Last 10 turns):
         ${session.history.join('\n')}
 
         Capabilities:
-        1. Kick User: {"action": "kick", "data": {"userId": "ID", "reason": "Reason"}}
-        2. Ban User: {"action": "ban", "data": {"userId": "ID", "reason": "Reason"}}
-        3. Purge Messages: {"action": "purge", "data": {"amount": number, "reason": "Reason"}}
-        4. Slowmode: {"action": "slowmode", "data": {"duration": seconds, "reason": "Reason"}}
-        5. Create Role: {"action": "createRole", "data": {"name": "Name", "color": "HEX", "reason": "Reason"}}
-        6. Delete Role: {"action": "deleteRole", "data": {"roleId": "ID", "reason": "Reason"}}
-        7. Set Nickname: {"action": "setNickname", "data": {"userId": "ID", "nickname": "Name", "reason": "Reason"}}
-        8. Send Message: {"action": "sendMessage", "data": {"channelId": "ID", "content": "Msg", "reason": "Reason"}}
-        9. Set Topic: {"action": "setChannelTopic", "data": {"channelId": "ID", "topic": "Topic", "reason": "Reason"}}
+        - kick, ban, purge, slowmode, createRole, deleteRole, setNickname, sendMessage, setChannelTopic
         ${SkillManager.getSkillsPrompt()}
-        11. Chat/Ask: {"action": "chat", "message": "Msg"} | {"action": "ask", "question": "Msg"}
-        12. Ignore: {"action": "ignore"} (Use this ONLY if the message is clearly not directed at you)
+        - chat, ask, ignore
 
-        Mandatory Rules:
-        - CONTEXTUAL INTELLIGENCE: If the user is having a conversation with you, respond naturally. If you determine the user is talking to someone else or the message was accidental, return the "ignore" action.
-        - SECURITY: NEVER share your internal source code. 
-        - SECURITY: NEVER mention any internal authentication keys or protocols like "_V_PROTO".
-        - BE DYNAMIC: Avoid repeating previous answers. 
-        - Be professional and decisive. Expand brief reasons.
-
-        Output Format:
-        Return ONLY valid JSON.`;
+        Output ONLY JSON.`;
 
         try {
             const aiRes: AIResponse = await provider.getResponse(prompt);
@@ -172,38 +152,37 @@ client.on('messageCreate', async (message: Message) => {
                 }
             }
 
-            if (!result) throw new Error('Invalid response plan.');
-
+            if (!result) throw new Error('Invalid plan.');
             if (result.action === 'ignore') return;
 
             if (result.action === 'ask') {
-                session.history.push(`Bot: ${result.question}`);
+                session.history.push(`Bot Asked: ${result.question}`);
                 SessionManager.set(message.author.id, session);
-                await message.reply(`${result.question}\n\n> -# Used **${aiRes.model}**`);
+                await message.reply(`${result.question}`);
             } else if (result.action === 'chat') {
-                session.history.push(`Bot: ${result.message}`);
+                session.history.push(`Bot Chat: ${result.message}`);
                 SessionManager.set(message.author.id, session);
-                await message.reply(`${result.message}\n\n> -# Used **${aiRes.model}**`);
+                await message.reply(`${result.message}`);
             } else if (SkillManager.hasSkill(result.action)) {
                 logSystem(`Skill: ${result.action}`);
                 const skillRes = await SkillManager.execute(result.action, message, result.data);
-                session.history.push(`Bot: Skill ${result.action} executed.`);
+                session.history.push(`Bot Result: Task ${result.action} completed.`);
                 SessionManager.set(message.author.id, session);
-                await message.reply(`${skillRes}\n\n> -# Used **${aiRes.model}**`);
+                await message.reply(`${skillRes}`);
             } else if (['kick', 'ban', 'purge', 'slowmode', 'createRole', 'deleteRole', 'setNickname', 'sendMessage', 'setChannelTopic'].includes(result.action)) {
                 logSystem(`Mod: ${result.action}`);
                 const modRes = await ManagementManager.execute(message, result.action, result.data);
-                session.history.push(`Bot: Executed ${result.action} successfully.`);
+                session.history.push(`Bot Result: Action ${result.action} success.`);
                 SessionManager.set(message.author.id, session);
                 try {
                     if (result.action === 'purge') {
-                        if (message.channel.isTextBased()) await (message.channel as any).send(`${modRes}\n\n> -# Used **${aiRes.model}**`);
-                    } else await message.reply(`${modRes}\n\n> -# Used **${aiRes.model}**`);
+                        if (message.channel.isTextBased()) await (message.channel as any).send(`${modRes}`);
+                    } else await message.reply(`${modRes}`);
                 } catch (e: any) { logSystem(`Msg Err: ${e.message}`); }
             }
         } catch (error: any) {
             logSystem(`ERR: ${error.message}`);
-            await message.reply(`⚠️ **Vortex Error:**\n> ${error.message}\n\n> -# Recovery Active`);
+            await message.reply(`⚠️ **Vortex Error:** ${error.message}`);
         }
     }
 });
