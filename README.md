@@ -70,13 +70,17 @@ Vortex responds natively to conversational requests using these underlying modul
 
 ## 🏗️ Architecture
 
-Vortex is built with a focus on performance and modularity, inspired by and utilizing the **[Sapphire Framework](https://sapphirejs.dev/)**. Special thanks to the Sapphire community for providing the structural foundation and visual inspiration for our logging and management systems.
+Vortex is built with a focus on performance, modularity, and scalability. It uses a **Modular Service-Oriented Architecture**:
 
-Vortex uses a **Modular Handler Pattern**:
-- **`ProviderManager`**: Manages model rotation and fallbacks.
-- **`ManagementManager`**: Executes low-level Discord actions (bans, roles, channels).
-- **`SkillManager`**: Dynamically loads `.ts` modules from the `src/skills` directory.
-- **`SessionManager`**: Maintains multi-turn conversation history with persistent JSON logging.
+- **`src/core/`**: Central bot logic, client management, logging, and constants.
+- **`src/services/`**: High-level business logic like `PromptService` (AI orchestration) and `VisionService` (image analysis).
+- **`src/events/`**: Decoupled Discord event handlers for better maintainability.
+- **`src/providers/`**: Manages multi-model rotation and AI provider fallbacks.
+- **`src/skills/`**: Dynamically loaded feature modules (commands, tools).
+- **`src/utils/`**: Shared utilities for server management, sessions, and integrity checks.
+
+Vortex is inspired by modern architectural patterns and utilizes a **Modular Handler Pattern** to ensure each component remains focused and testable.
+
 
 ---
 
